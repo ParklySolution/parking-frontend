@@ -1,0 +1,146 @@
+.tenant-sidebar {
+  width: 260px;
+  background-color: #111418 !important;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255,255,255,0.05);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  color: #fff;
+  box-sizing: border-box;
+}
+
+.tenant-sidebar nav {
+  flex: 1;
+  width: 100%;
+}
+
+.tenant-sidebar .nav-link {
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #e6e6e6;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  transition: all 0.2s ease;
+  background-color: transparent;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tenant-sidebar .nav-link:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.tenant-sidebar .nav-link.active {
+  background: rgba(59, 130, 246, 0.15);
+  color: #4f8cff;
+}
+
+.tenant-sidebar .icon {
+  font-size: 20px;
+  width: 24px;
+  display: inline-block;
+  color: #4f8cff;
+}
+
+.tenant-sidebar .management-section {
+  margin-top: auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  width: 100%;
+}
+
+.tenant-sidebar .section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+  padding: 0 12px;
+}
+
+/* Forza lo stile per il link metodi pagamento */
+.tenant-sidebar .nav-link[href*="payment-methods"] {
+  background-color: transparent !important;
+  color: #e6e6e6 !important;
+}
+
+.tenant-sidebar .nav-link[href*="payment-methods"]:hover {
+  background: rgba(255,255,255,0.05) !important;
+}
+
+.tenant-sidebar .nav-link[href*="payment-methods"].active {
+  background: rgba(59, 130, 246, 0.15) !important;
+  color: #4f8cff !important;
+}
+
+/* Assicura che la sidebar gestisca correttamente lo scroll */
+.tenant-sidebar {
+  width: 260px;
+  background-color: #111418 !important;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255,255,255,0.05);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  color: #fff;
+  box-sizing: border-box;
+  overflow-y: auto; /* Aggiungi scroll se necessario */
+}
+
+/* La navigazione principale occupa lo spazio necessario */
+.tenant-sidebar nav {
+  flex-shrink: 0; /* Non si comprime */
+  width: 100%;
+}
+
+/* La sezione management si adatta dinamicamente */
+.tenant-sidebar .management-section {
+  margin-top: 24px; /* Togli margin-top: auto */
+  padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  width: 100%;
+  flex-shrink: 0; /* Non si comprime */
+}
+
+/* Assicura che tutti i link abbiano lo stesso background */
+.tenant-sidebar .nav-link {
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #e6e6e6;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  transition: all 0.2s ease;
+  background-color: transparent;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Forza lo sfondo per tutti i link, incluso l'ultimo */
+.tenant-sidebar .nav-link:last-child {
+  background-color: transparent;
+}
+
+.tenant-sidebar .nav-link:last-child:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.tenant-sidebar .nav-link:last-child.active {
+  background: rgba(59, 130, 246, 0.15);
+  color: #4f8cff;
+}

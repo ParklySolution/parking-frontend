@@ -1,0 +1,89 @@
+.access-gate {
+  background: linear-gradient(180deg, #020617, #020617cc);
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid #1e293b;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+/* HEADER */
+.gate-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.gate-icon {
+  font-size: 2.4rem;
+}
+
+.gate-label {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+/* VISUAL */
+.gate-visual {
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gate-arm {
+  width: 160px;
+  height: 10px;
+  background: #475569;
+  border-radius: 6px;
+  transform-origin: left center;
+  transition: transform 0.6s ease, background 0.3s ease;
+}
+
+/* =====================
+   STATI
+   ===================== */
+
+.access-gate.idle {
+  opacity: 0.85;
+}
+
+.access-gate.checking {
+  border-color: #eab308;
+  animation: pulse-yellow 1.2s infinite;
+}
+
+.access-gate.checking .gate-arm {
+  background: #eab308;
+}
+
+.access-gate.allowed {
+  border-color: #16a34a;
+  box-shadow: 0 0 30px rgba(22, 163, 74, 0.45);
+}
+
+.access-gate.allowed .gate-arm {
+  background: #16a34a;
+  transform: rotate(-55deg);
+}
+
+.access-gate.blocked {
+  border-color: #dc2626;
+  box-shadow: 0 0 30px rgba(220, 38, 38, 0.45);
+}
+
+.access-gate.blocked .gate-arm {
+  background: #dc2626;
+}
+
+/* =====================
+   ANIMAZIONI
+   ===================== */
+@keyframes pulse-yellow {
+  0%   { box-shadow: 0 0 0 rgba(234,179,8,0); }
+  50%  { box-shadow: 0 0 25px rgba(234,179,8,0.6); }
+  100% { box-shadow: 0 0 0 rgba(234,179,8,0); }
+}

@@ -1,0 +1,160 @@
+/* =========================
+   STORICO ACCESSI
+   ========================= */
+
+.log-card {
+  background: #020617;
+  border-radius: 12px;
+  padding: 12px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #1e293b;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+}
+
+.log-card h3 {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+/* =========================
+   STATO VUOTO
+   ========================= */
+
+.log-empty {
+  text-align: center;
+  padding: 24px;
+  opacity: 0.6;
+  font-size: 0.85rem;
+}
+
+/* =========================
+   TABELLA
+   ========================= */
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+/* header sticky */
+.log-table thead {
+  background: #020617;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.log-table th {
+  text-align: left;
+  padding: 10px 8px;
+  color: #94a3b8;
+  font-weight: 500;
+  border-bottom: 1px solid #1e293b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
+
+.log-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #1e293b;
+  vertical-align: middle;
+}
+
+/* =========================
+   RIGHE
+   ========================= */
+
+.log-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.log-table tbody tr:hover {
+  background: rgba(148, 163, 184, 0.05);
+}
+
+/* evidenzia nuovo evento */
+.log-table tbody tr:first-child {
+  animation: highlightRow 0.6s ease;
+}
+
+/* =========================
+   COLONNE MIRATE
+   ========================= */
+
+/* ORA */
+.log-table td:first-child {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* TARGA */
+.log-table td strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  background: rgba(15, 23, 42, 0.8);
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+/* =========================
+   BADGE STATO
+   ========================= */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 110px;
+}
+
+/* stati badge */
+.badge.allowed {
+  background: rgba(22, 163, 74, 0.2);
+  color: #22c55e;
+}
+
+.badge.blocked {
+  background: rgba(220, 38, 38, 0.2);
+  color: #ef4444;
+}
+
+/* =========================
+   RIGHE COLORATE + INDICATORE
+   ========================= */
+
+tr.allowed {
+  background: rgba(22, 163, 74, 0.04);
+  border-left: 4px solid #22c55e;
+}
+
+tr.blocked {
+  background: rgba(220, 38, 38, 0.04);
+  border-left: 4px solid #ef4444;
+}
+
+/* =========================
+   ANIMAZIONI
+   ========================= */
+
+@keyframes highlightRow {
+  from {
+    background: rgba(59, 130, 246, 0.15);
+  }
+  to {
+    background: transparent;
+  }
+}

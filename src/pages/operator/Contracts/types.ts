@@ -1,0 +1,109 @@
+// src/pages/operator/Contracts/types.ts
+export interface Tariff {
+  id: number;
+  type: 'sosta' | 'lavaggio' | 'abbonamento';
+  description: string;
+  price: string;
+  valid_from: string;
+  valid_to: string;
+}
+
+export interface Vehicle {
+  id: number;
+  plate: string;
+  make: string;
+  model: string;
+  model_id?: string;
+  brand_id?: string;
+  category_id?: string;
+  year: string;
+  color: string;
+  color_id?: string;
+  tariffs: Tariff[];
+}
+
+export interface FormData {
+  first_name: string;
+  last_name: string;
+  fiscal_code: string;
+  birth_date: string;
+  birth_place: string;
+  birth_province?: string;
+  address: string;
+  city: string;
+  postal_code: string;
+  province: string;
+  email: string;
+  phone: string;
+  mobile?: string;
+  fax?: string;
+  document_type: string;
+  document_number: string;
+  document_issue_date: string;
+  document_expiry_date: string;
+  document_issuing_authority: string;
+  document_issuing_place?: string;
+  duration_months: string;
+  price: string;
+  notes: string;
+  send_email: boolean;
+  print_copy: boolean;
+  vehicle_plate?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+}
+
+// Esporta tutto ciò che serve
+export interface ContractTemplate {
+  id: string;
+  type: 'subscription' | 'wash_fidelity' | 'convention' | 'generic';
+  name: string;
+  title: string;
+  content: string;
+  terms_id: string | null;
+  default_duration_months: number | null;
+  default_price: number | null;
+  is_active: boolean;
+}
+
+export interface ContractTerm {
+  id: string;
+  name: string;
+  content: string;
+}
+
+export interface CompanyInfo {
+  company_name: string;
+  legal_address: string | null;
+  operational_address?: string | null;
+  vat_number: string | null;
+  tax_code: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile?: string | null;
+  pec?: string | null;
+  fax?: string | null;
+  website?: string | null;
+  logo_url: string | null;
+}
+
+export interface GeneratedContract {
+  id: string;
+  contract_number: string;
+  customer_id: string;
+  template_id: string;
+  signed_at: string;
+  valid_from: string;
+  valid_to: string | null;
+  duration_months: number | null;
+  price: number | null;
+  notes: string | null;
+}
+
+export interface ContractType {
+  id: string;
+  nome: string;
+  icon: React.ReactNode;
+  colore: string;
+  descrizione: string;
+}

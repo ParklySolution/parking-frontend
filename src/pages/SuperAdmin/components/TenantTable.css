@@ -1,0 +1,65 @@
+/* ===== WRAPPER ===== */
+.sa-table-wrapper {
+  background: #111318;
+  border: 1px solid #1f2127;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+  overflow-x: auto;
+}
+
+/* ===== TABLE ===== */
+.sa-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #e5e7eb;
+  font-size: 0.95rem;
+}
+
+.sa-table th {
+  text-align: left;
+  padding: 12px;
+  background: #1a1d24;
+  color: #4ea8ff;
+  font-weight: 600;
+  border-bottom: 1px solid #2a2d35;
+}
+
+.sa-table td {
+  padding: 12px;
+  border-bottom: 1px solid #1f2127;
+}
+
+.sa-table tr:hover {
+  background: #1a1d24;
+}
+
+/* ===== BADGES ===== */
+.sa-badge {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.sa-badge.active {
+  background: #0f5132;
+  color: #75ffb1;
+}
+
+.sa-badge.inactive {
+  background: #512c0f;
+  color: #ffb875;
+}
+
+/* ===== LINK DETTAGLI ===== */
+.sa-link-detail {
+  color: #4ea8ff;
+  text-decoration: none;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.sa-link-detail:hover {
+  color: #82c7ff;
+}

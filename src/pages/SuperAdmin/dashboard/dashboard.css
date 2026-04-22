@@ -1,0 +1,115 @@
+.dashboard-container {
+  padding: 30px;
+  color: #e5e5e5;
+}
+
+.dashboard-title {
+  font-size: 28px;
+  margin-bottom: 25px;
+  font-weight: 600;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.kpi-card {
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #333;
+  text-align: center;
+}
+
+.kpi-value {
+  font-size: 32px;
+  font-weight: bold;
+  color: #4f9cff;
+}
+
+.kpi-label {
+  margin-top: 5px;
+  font-size: 14px;
+  color: #aaa;
+}
+
+.charts-grid {
+  margin-top: 30px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.chart-card {
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #333;
+}
+
+.line-chart,
+.pie-chart {
+  width: 100%;
+  height: 200px;
+}
+
+.section-card {
+  margin-top: 30px;
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #333;
+}
+
+.sa-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sa-table th,
+.sa-table td {
+  padding: 10px;
+  border-bottom: 1px solid #333;
+}
+
+.event-list {
+  list-style: none;
+  padding: 0;
+}
+
+.event-item {
+  padding: 10px 0;
+  border-bottom: 1px solid #333;
+}
+
+.event-type {
+  font-weight: bold;
+  color: #4f9cff;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.sa-btn {
+  padding: 8px 14px;
+  background: #333;
+  border: 1px solid #555;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #e5e5e5;
+}
+
+.sa-btn-primary {
+  background: #4f9cff;
+  border-color: #4f9cff;
+  color: #000;
+}
+
+.sa-btn-small {
+  padding: 5px 10px;
+}

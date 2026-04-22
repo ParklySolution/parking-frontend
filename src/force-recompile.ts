@@ -1,0 +1,1 @@
+New-Item -Path src/force-recompile.ts -ItemType File -Value "// Force recompile - 02/03/2026"

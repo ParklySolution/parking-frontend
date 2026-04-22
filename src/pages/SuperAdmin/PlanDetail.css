@@ -1,0 +1,127 @@
+/* ====== LAYOUT PRINCIPALE ====== */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 28px;
+  margin-top: 28px;
+}
+
+/* ====== CARD PREMIUM ====== */
+.plan-card {
+  background: #1b1b1b;
+  border: 1px solid #2a2a2a;
+  border-radius: 14px;
+  padding: 26px;
+  color: #e6e6e6;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.plan-card:hover {
+  box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+  transform: translateY(-3px);
+}
+
+/* ====== TITOLI ====== */
+.plan-card h2 {
+  margin-bottom: 14px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* ====== PREZZO ====== */
+.plan-price {
+  font-size: 28px;
+  font-weight: 700;
+  color: #4caf50;
+  margin-top: 6px;
+}
+
+/* ====== FEATURE GRID (Moduli + Limiti) ====== */
+.feature-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.feature-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #222;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.feature-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: #ddd;
+}
+
+/* ====== BADGE ATTIVO / NON ATTIVO ====== */
+.badge-active {
+  background: #2e7d32;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badge-inactive {
+  background: #8b0000;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ====== BADGE CONTAINER (vecchi badge) ====== */
+.sa-badge-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+/* ====== LISTA TENANT ====== */
+.sa-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sa-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.sa-list li:last-child {
+  border-bottom: none;
+}
+
+.sa-list a {
+  color: #4da3ff;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.sa-list a:hover {
+  text-decoration: underline;
+}
+
+/* ====== JSON BOX ====== */
+.sa-json {
+  background: #111;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  font-size: 13px;
+  overflow-x: auto;
+  margin-top: 12px;
+}

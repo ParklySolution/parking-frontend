@@ -1,0 +1,40 @@
+.exit-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.exit-box {
+  width: 420px;
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.exit-box h2 {
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.exit-summary,
+.exit-success,
+.exit-error {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.exit-summary {
+  background: rgba(59,130,246,0.1);
+}
+
+.exit-success {
+  background: rgba(34,197,94,0.15);
+  text-align: center;
+}
+
+.exit-error {
+  background: rgba(220,38,38,0.15);
+}

@@ -1,0 +1,3566 @@
+import { useEffect, useState } from "react";
+
+import PlatesStream from "@/components/dashboard/PlatesStream";
+import PlatesLogTable from "@/components/PlatesLogTable";
+import KpiBar from "@/components/dashboard/KpiBar";
+import AccessGate from "@/components/dashboard/AccessGate";
+
+import { fetchPlateLogs } from "@/services/plateLogsService";
+import type { PlateLog } from "@/types/plateLog";
+
+import "@/styles/dashboard.css";
+
+type GateStatus = "idle" | "checking" | "allowed" | "blocked";
+
+export default function Dashboard() {
+  const [logs, setLogs] = useState<PlateLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [gateStatus, setGateStatus] = useState<GateStatus>("idle");
+
+  useEffect(() => {
+    document.body.classList.add("dashboard-active");
+    
+    return () => {
+      document.body.classList.remove("dashboard-active");
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadLogs = async () => {
+      setLoading(true);
+      try {
+        setGateStatus("checking");
+
+        const data = await fetchPlateLogs();
+        setLogs(data);
+
+        if (data.length > 0) {
+          const last = data[0];
+          setGateStatus(last.allowed ? "allowed" : "blocked");
+        } else {
+          setGateStatus("idle");
+        }
+      } catch (e) {
+        console.error("Errore caricamento log", e);
+        setGateStatus("blocked");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadLogs();
+    const interval = setInterval(loadLogs, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="dashboard-container">
+      <div className="dashboard">
+        {/* HEADER */}
+        <header className="dashboard-header">
+          <button className="btn-entry">🚪 ENTRATA</button>
+
+          <div className="datetime-box">
+            <div className="date">
+              {new Date().toLocaleDateString("it-IT", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+            <div className="time">
+              {new Date().toLocaleTimeString("it-IT")}
+            </div>
+          </div>
+
+          <button className="btn-exit">USCITA ↩️</button>
+        </header>
+
+        {/* KPI BAR - LASCIAMOLO COSÌ COME ERA */}
+        <KpiBar logs={logs} />
+
+        {/* BODY - GRIGLIA 3x2 FISSA */}
+        <main className="dashboard-grid">
+          {/* COLONNA 1: Targhe live */}
+          <section className="grid-cell targhe-live">
+            <h3>📝 Targhe rilevate</h3>
+            <PlatesStream />
+          </section>
+
+          {/* COLONNA 2: Foto targa */}
+          <section className="grid-cell foto-targa">
+            <div className="photo-box">
+              <div className="photo-placeholder">📸 Foto targa</div>
+            </div>
+          </section>
+
+          {/* COLONNA 3: Transiti live */}
+          <section className="grid-cell transiti-live">
+            <div className="live-box">
+              <h3>🚦 Transiti in tempo reale</h3>
+              <AccessGate
+                status={gateStatus}
+                onReset={() => setGateStatus("idle")}
+              />
+            </div>
+          </section>
+
+          {/* RIGA 2 - COLONNA 1: Spazio AccessGate? O vuoto? */}
+          <section className="grid-cell stato-barriera">
+            <h3>🎯 Stato barriera</h3>
+            <AccessGate
+              status={gateStatus}
+              onReset={() => setGateStatus("idle")}
+            />
+          </section>
+
+          {/* RIGA 2 - COLONNA 2: Menu */}
+          <section className="grid-cell menu">
+            <div className="menu-box">
+              <button>🎟️ Abbonamenti</button>
+              <button>📄 Contratti</button>
+              <button>📊 Report</button>
+              <button>⚙️ Impostazioni</button>
+            </div>
+          </section>
+
+          {/* RIGA 2 - COLONNA 3: Storico */}
+          <section className="grid-cell storico">
+            <div className="history-box">
+              <h3>📜 Storico transiti</h3>
+              <PlatesLogTable logs={logs} loading={loading} />
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+/* =========================
+   RESET E FULLSCREEN
+   ========================= */
+.dashboard-active {
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.dashboard-container {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #0f172a;
+  color: #e5e7eb;
+  font-family: system-ui, sans-serif;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  z-index: 10000;
+}
+
+/* =========================
+   HEADER
+   ========================= */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #020617;
+  border-bottom: 1px solid #1e293b;
+  height: 70px;
+  min-height: 70px;
+}
+
+.dashboard-header button {
+  padding: 12px 20px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  min-width: 120px;
+}
+
+.btn-entry {
+  background: #16a34a;
+  color: #fff;
+}
+
+.btn-exit {
+  background: #dc2626;
+  color: #fff;
+}
+
+.datetime-box {
+  text-align: center;
+}
+
+.datetime-box .date {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.datetime-box .time {
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: #e2e8f0;
+}
+
+/* =========================
+   KPI BAR
+   ========================= */
+.kpi-bar {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 10px 16px;
+  background: #020617;
+  border-bottom: 1px solid #1e293b;
+  height: 60px;
+}
+
+/* =========================
+   GRIGLIA PRINCIPALE 3x2
+   ========================= */
+.dashboard-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 320px 1fr 420px;
+  grid-template-rows: 1fr 150px;
+  grid-template-areas:
+    "targhe foto transiti"
+    "barriera menu storico";
+  gap: 16px;
+  padding: 16px;
+  overflow: hidden;
+  width: 100%;
+  height: calc(100vh - 140px);
+}
+
+/* =========================
+   CELLE DELLA GRIGLIA
+   ========================= */
+.grid-cell {
+  background: #020617;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #1e293b;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TARGHE LIVE */
+.targhe-live {
+  grid-area: targhe;
+  min-height: 200px;
+}
+
+.targhe-live h3 {
+  margin-bottom: 16px;
+  color: #e2e8f0;
+  font-size: 1.2rem;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 8px;
+}
+
+/* FOTO TARGA */
+.foto-targa {
+  grid-area: foto;
+}
+
+.photo-box {
+  flex: 1;
+  background: #020617;
+  border: 2px dashed #334155;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.photo-placeholder {
+  opacity: 0.5;
+  font-size: 1.4rem;
+  color: #94a3b8;
+}
+
+/* TRANSITI LIVE */
+.transiti-live {
+  grid-area: transiti;
+  min-height: 200px;
+}
+
+.live-box {
+  background: #020617;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #334155;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.live-box h3 {
+  margin-bottom: 12px;
+  color: #e2e8f0;
+  font-size: 1.1rem;
+}
+
+/* TRANSITI LIST - MIGLIORATA */
+.transits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.transit-item {
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  align-items: center;
+  padding: 10px 12px;
+  background: #1e293b;
+  border-radius: 8px;
+  border-left: 4px solid #334155;
+  transition: all 0.2s;
+}
+
+.transit-item:hover {
+  background: #2d3748;
+  transform: translateX(2px);
+}
+
+.transit-item.allowed {
+  border-left-color: #16a34a;
+}
+
+.transit-item.blocked {
+  border-left-color: #dc2626;
+}
+
+.transit-time {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  font-family: monospace;
+}
+
+.transit-plate {
+  font-weight: bold;
+  font-family: monospace;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.transit-status {
+  font-weight: bold;
+  font-size: 0.9rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.transit-status.allowed {
+  background: rgba(22, 163, 74, 0.2);
+  color: #16a34a;
+}
+
+.transit-status.blocked {
+  background: rgba(220, 38, 38, 0.2);
+  color: #dc2626;
+}
+
+.no-transits,
+.loading-transits {
+  text-align: center;
+  padding: 20px;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* STATO BARRIERA */
+.stato-barriera {
+  grid-area: barriera;
+  min-height: 150px;
+}
+
+.stato-barriera h3 {
+  margin-bottom: 15px;
+  color: #e2e8f0;
+  font-size: 1.2rem;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 8px;
+}
+
+/* OVERRIDE per AccessGate nel contesto dashboard */
+.stato-barriera .access-gate {
+  margin: 0 auto 20px auto;
+  max-width: 300px;
+}
+
+/* QUICK STATS */
+.quick-stats {
+  background: #1e293b;
+  border-radius: 10px;
+  padding: 15px;
+  border: 1px solid #334155;
+  margin-top: 15px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #334155;
+}
+
+.stat-row:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.stat-label {
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.stat-value {
+  font-weight: bold;
+  color: #e2e8f0;
+}
+
+.stat-value.allowed {
+  color: #16a34a;
+}
+
+.stat-value.blocked {
+  color: #dc2626;
+}
+
+/* MENU */
+.menu {
+  grid-area: menu;
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-box {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.menu-box button {
+  padding: 14px;
+  background: #1e293b;
+  color: #e5e7eb;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.menu-box button:hover {
+  background: #334155;
+  transform: translateY(-2px);
+}
+
+/* STORICO */
+.storico {
+  grid-area: storico;
+  min-height: 300px;
+}
+
+.history-box {
+  flex: 1;
+  overflow-y: auto;
+  border-radius: 12px;
+  background: #020617;
+  border: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-box h3 {
+  margin-bottom: 16px;
+  color: #e2e8f0;
+  font-size: 1.2rem;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 8px;
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+@media (max-width: 1300px) {
+  .dashboard-grid {
+    grid-template-columns: 280px 1fr 380px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "targhe foto"
+      "transiti storico"
+      "barriera menu";
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(6, auto);
+    grid-template-areas:
+      "targhe"
+      "foto"
+      "transiti"
+      "barriera"
+      "menu"
+      "storico";
+  }
+  
+  .dashboard-header {
+    flex-direction: column;
+    height: auto;
+    gap: 10px;
+    padding: 10px;
+  }
+  
+  .dashboard-header button {
+    width: 100%;
+  }
+  
+  .datetime-box {
+    order: -1;
+  }
+  
+  .kpi-bar {
+    flex-direction: column;
+    height: auto;
+    padding: 8px;
+    gap: 5px;
+  }
+}
+
+/* =========================
+   TARGHE LIVE - PLACEHOLDER
+   ========================= */
+.plates-placeholder {
+  flex: 1;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.plate-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #1e293b;
+  border-radius: 8px;
+  border-left: 4px solid #3b82f6;
+  transition: all 0.2s;
+}
+
+.plate-item:hover {
+  background: #2d3748;
+  transform: translateX(2px);
+}
+
+.plate-text {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #e2e8f0;
+}
+
+.plate-time {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  color: #94a3b8;
+}
+
+.no-plates {
+  color: #94a3b8;
+  padding: 15px;
+  text-align: center;
+}
+
+.no-plates div {
+  padding: 8px;
+  border-bottom: 1px solid #334155;
+  font-family: monospace;
+}
+
+/* =========================
+   TRANSITI LIVE - MIGLIORATO
+   ========================= */
+.gate-status-container {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #1e293b;
+  border-radius: 10px;
+  border: 1px solid #334155;
+}
+
+.transits-list {
+  flex: 1;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: #020617;
+  border: 1px solid #334155;
+  padding: 10px;
+}
+
+.list-header {
+  display: grid;
+  grid-template-columns: 80px 1fr 50px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-weight: bold;
+  color: #94a3b8;
+  border-bottom: 1px solid #334155;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+}
+
+.transit-item {
+  display: grid;
+  grid-template-columns: 80px 1fr 50px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.transit-item:hover {
+  background: #1e293b;
+}
+
+.transit-item.allowed {
+  background: rgba(22, 163, 74, 0.1);
+  border-left: 3px solid #16a34a;
+}
+
+.transit-item.blocked {
+  background: rgba(220, 38, 38, 0.1);
+  border-left: 3px solid #dc2626;
+}
+
+.transit-time {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.transit-plate {
+  font-family: monospace;
+  font-weight: bold;
+  font-size: 1rem;
+  text-align: center;
+  color: #e2e8f0;
+}
+
+.transit-status {
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.transit-status.allowed {
+  color: #16a34a;
+}
+
+.transit-status.blocked {
+  color: #dc2626;
+}
+
+.placeholder-transits {
+  opacity: 0.8;
+}
+
+.loading-transits {
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* =========================
+   BOX DESTRA UGUALI DIMENSIONI
+   ========================= */
+.transiti-live,
+.storico {
+  min-height: 350px; /* Altezza uguale per entrambi */
+  max-height: 400px;
+}
+
+.transiti-live .live-box,
+.storico .history-box {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* =========================
+   SPAZIO VUOTO
+   ========================= */
+.spazio-vuoto {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+.empty-placeholder {
+  text-align: center;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 20px;
+}
+
+
+dashboard.css    
+
+/* =========================
+   RESET E FULLSCREEN
+   ========================= */
+.dashboard-active {
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.dashboard-container {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #0f172a;
+  color: #e5e7eb;
+  font-family: system-ui, sans-serif;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  z-index: 10000;
+}
+
+/* =========================
+   HEADER
+   ========================= */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #020617;
+  border-bottom: 1px solid #1e293b;
+  height: 70px;
+  min-height: 70px;
+}
+
+.dashboard-header button {
+  padding: 12px 20px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  min-width: 120px;
+}
+
+.btn-entry {
+  background: #16a34a;
+  color: #fff;
+}
+
+.btn-exit {
+  background: #dc2626;
+  color: #fff;
+}
+
+.datetime-box {
+  text-align: center;
+}
+
+.datetime-box .date {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.datetime-box .time {
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: #e2e8f0;
+}
+
+/* =========================
+   KPI BAR
+   ========================= */
+.kpi-bar {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 10px 16px;
+  background: #020617;
+  border-bottom: 1px solid #1e293b;
+  height: 60px;
+}
+
+/* =========================
+   GRIGLIA PRINCIPALE 3x2 CON ALTEZZE UGUALI
+   ========================= */
+.dashboard-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 320px 1fr 420px;
+  grid-template-rows: 1fr 180px; /* Aumentata per box bassi più alti */
+  grid-template-areas:
+    "targhe foto transiti"
+    "vuoto menu storico"; /* Cambiato da "barriera" a "vuoto" */
+  gap: 16px;
+  padding: 16px;
+  overflow: hidden;
+  width: 100%;
+  height: calc(100vh - 140px);
+}
+
+/* =========================
+   CELLE DELLA GRIGLIA - ALTEZZE UGUALI
+   ========================= */
+.grid-cell {
+  background: #020617;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #1e293b;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* IMPORTANTE: usa tutta l'altezza disponibile */
+}
+
+/* BOX ALTI: TUTTI CON LA STESSA ALTEZZA */
+.targhe-live,
+.foto-targa,
+.transiti-live {
+  grid-area: auto; /* Le grid-areas sono definite sopra */
+  min-height: 350px;
+  max-height: 400px;
+}
+
+/* BOX BASSI: TUTTI CON LA STESSA ALTEZZA */
+.spazio-vuoto,
+.menu,
+.storico {
+  grid-area: auto; /* Le grid-areas sono definite sopra */
+  min-height: 150px;
+  max-height: 180px;
+}
+
+/* TARGHE LIVE */
+.targhe-live {
+  grid-area: targhe;
+}
+
+.targhe-live h3 {
+  margin-bottom: 16px;
+  color: #e2e8f0;
+  font-size: 1.2rem;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 8px;
+}
+
+/* FOTO TARGA */
+.foto-targa {
+  grid-area: foto;
+}
+
+.photo-box {
+  flex: 1;
+  background: #020617;
+  border: 2px dashed #334155;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  height: 100%; /* Occupa tutta l'altezza */
+}
+
+.photo-placeholder {
+  opacity: 0.5;
+  font-size: 1.4rem;
+  color: #94a3b8;
+}
+
+/* TRANSITI LIVE */
+.transiti-live {
+  grid-area: transiti;
+}
+
+.live-box {
+  background: #020617;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #334155;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* Occupa tutta l'altezza */
+}
+
+.live-box h3 {
+  margin-bottom: 12px;
+  color: #e2e8f0;
+  font-size: 1.1rem;
+}
+
+/* SPAZIO VUOTO */
+.spazio-vuoto {
+  grid-area: vuoto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+.empty-placeholder {
+  text-align: center;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 20px;
+}
+
+/* MENU */
+.menu {
+  grid-area: menu;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-box {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.menu-box button {
+  padding: 14px;
+  background: #1e293b;
+  color: #e5e7eb;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.menu-box button:hover {
+  background: #334155;
+  transform: translateY(-2px);
+}
+
+/* STORICO */
+.storico {
+  grid-area: storico;
+}
+
+.history-box {
+  flex: 1;
+  overflow-y: auto;
+  border-radius: 12px;
+  background: #020617;
+  border: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* Occupa tutta l'altezza */
+}
+
+/* RIMUOVI TITOLO DUPLICATO DALLO STORICO */
+.history-box > h3:first-child {
+  display: none !important;
+}
+
+/* =========================
+   TARGHE LIVE - PLACEHOLDER
+   ========================= */
+.plates-placeholder {
+  flex: 1;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.plate-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #1e293b;
+  border-radius: 8px;
+  border-left: 4px solid #3b82f6;
+  transition: all 0.2s;
+}
+
+.plate-item:hover {
+  background: #2d3748;
+  transform: translateX(2px);
+}
+
+.plate-text {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #e2e8f0;
+}
+
+.plate-time {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  color: #94a3b8;
+}
+
+.no-plates {
+  color: #94a3b8;
+  padding: 15px;
+  text-align: center;
+}
+
+.no-plates div {
+  padding: 8px;
+  border-bottom: 1px solid #334155;
+  font-family: monospace;
+}
+
+/* =========================
+   TRANSITI LIVE - MIGLIORATO
+   ========================= */
+.gate-status-container {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #1e293b;
+  border-radius: 10px;
+  border: 1px solid #334155;
+}
+
+.transits-list {
+  flex: 1;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: #020617;
+  border: 1px solid #334155;
+  padding: 10px;
+  min-height: 150px;
+}
+
+.list-header {
+  display: grid;
+  grid-template-columns: 80px 1fr 50px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-weight: bold;
+  color: #94a3b8;
+  border-bottom: 1px solid #334155;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+}
+
+.transit-item {
+  display: grid;
+  grid-template-columns: 80px 1fr 50px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.transit-item:hover {
+  background: #1e293b;
+}
+
+.transit-item.allowed {
+  background: rgba(22, 163, 74, 0.1);
+  border-left: 3px solid #16a34a;
+}
+
+.transit-item.blocked {
+  background: rgba(220, 38, 38, 0.1);
+  border-left: 3px solid #dc2626;
+}
+
+.transit-time {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.transit-plate {
+  font-family: monospace;
+  font-weight: bold;
+  font-size: 1rem;
+  text-align: center;
+  color: #e2e8f0;
+}
+
+.transit-status {
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.transit-status.allowed {
+  color: #16a34a;
+}
+
+.transit-status.blocked {
+  color: #dc2626;
+}
+
+.placeholder-transits {
+  opacity: 0.8;
+}
+
+.loading-transits {
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+@media (max-width: 1300px) {
+  .dashboard-grid {
+    grid-template-columns: 280px 1fr 380px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "targhe foto"
+      "transiti storico"
+      "vuoto menu";
+  }
+  
+  /* Reset altezze su tablet */
+  .targhe-live,
+  .foto-targa,
+  .transiti-live,
+  .spazio-vuoto,
+  .menu,
+  .storico {
+    min-height: auto;
+    max-height: none;
+    height: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(6, auto);
+    grid-template-areas:
+      "targhe"
+      "foto"
+      "transiti"
+      "vuoto"
+      "menu"
+      "storico";
+  }
+  
+  .dashboard-header {
+    flex-direction: column;
+    height: auto;
+    gap: 10px;
+    padding: 10px;
+  }
+  
+  .dashboard-header button {
+    width: 100%;
+  }
+  
+  .datetime-box {
+    order: -1;
+  }
+  
+  .kpi-bar {
+    flex-direction: column;
+    height: auto;
+    padding: 8px;
+    gap: 5px;
+  }
+}
+
+
+src/pages/ingress/index.tsx
+
+import "@/styles/ingresso.css";
+
+export default function Ingresso() {
+  return (
+    <div className="ingresso-container">
+      <div className="ingresso">
+
+        {/* HEADER */}
+        <header className="ingresso-header">
+          <div className="header-left">
+            🕐 ENTRATA: <strong>10:32:14</strong> 21/01/2026
+          </div>
+
+          <div className="header-center">
+            🎯 REGISTRAZIONE INGRESSO – NUOVA SOSTA
+          </div>
+
+          <div className="header-right">
+            ⏱ USCITA: --:--:--
+          </div>
+        </header>
+
+        {/* BARRA RICONOSCIMENTO CLIENTE (placeholder) */}
+        <section className="client-bar">
+          ✅ Mario Rossi • 📧 mario@email.it • 📞 333000000 • 🚗 Panda
+        </section>
+
+        {/* GRIGLIA PRINCIPALE */}
+        <main className="ingresso-grid">
+
+          {/* BOX SINISTRO */}
+          <section className="grid-box vehicle-box">
+            <h3>🚗 Dati veicolo</h3>
+
+            <div className="form-field">
+              <label>📍 Targa</label>
+              <input placeholder="AA123BB" />
+            </div>
+
+            <div className="form-field">
+              <label>🚗 Modello</label>
+              <input placeholder="Panda" />
+            </div>
+
+            <div className="form-field">
+              <label>🏭 Marca</label>
+              <input disabled value="Fiat" />
+            </div>
+
+            <div className="form-field">
+              <label>🎨 Colore</label>
+              <input placeholder="Bianco" />
+            </div>
+
+            <div className="form-field">
+              <label>📊 Categoria</label>
+              <input disabled value="Utilitaria" />
+            </div>
+
+            <div className="form-field">
+              <label>💰 Tariffa</label>
+              <input disabled value="€2,50 / h" />
+            </div>
+          </section>
+
+          {/* BOX CENTRALE */}
+          <section className="grid-box services-box">
+            <h3>📷 Foto & Servizi</h3>
+
+            <div className="photo-placeholder">
+              📸 Foto veicolo
+            </div>
+
+            <div className="services-group">
+              <h4>🏷️ Convenzioni</h4>
+              <div className="services-row">
+                <button>STADIO</button>
+                <button>HOTEL</button>
+              </div>
+            </div>
+
+            <div className="services-group">
+              <h4>🧼 Lavaggi</h4>
+              <div className="services-row">
+                <button>Base</button>
+                <button>Premium</button>
+              </div>
+            </div>
+          </section>
+
+          {/* BOX DESTRO */}
+          <section className="grid-box actions-box">
+            <h3>⚙️ Azioni</h3>
+
+            <button className="btn cancel">❌ Annulla</button>
+
+            <button className="btn primary">
+              🎫 Stampa ticket ingresso
+            </button>
+
+            <button className="btn secondary">
+              🏷️ Stampa convenzione
+            </button>
+
+            <button className="btn secondary">
+              🧼 Stampa lavaggio
+            </button>
+
+            <button className="btn secondary">
+              📦 Stampa servizio extra
+            </button>
+
+            <label className="print-toggle">
+              <input type="checkbox" /> 🖨️ Stampa reale
+            </label>
+
+            <div className="summary">
+              <h4>ℹ️ Riepilogo</h4>
+              <p>Targa: AA123BB</p>
+              <p>Veicolo: Panda</p>
+              <p>Cliente: Mario Rossi</p>
+            </div>
+          </section>
+
+        </main>
+      </div>
+    </div>
+  );
+}
+
+Dashboard.tsx    
+
+import { useEffect, useState } from "react";
+
+import PlatesStream from "@/components/dashboard/PlatesStream";
+import PlatesLogTable from "@/components/PlatesLogTable";
+import KpiBar from "@/components/dashboard/KpiBar";
+import AccessGate from "@/components/dashboard/AccessGate";
+
+import { fetchPlateLogs } from "@/services/plateLogsService";
+import type { PlateLog } from "@/types/plateLog";
+
+import "@/styles/dashboard.css";
+
+type GateStatus = "idle" | "checking" | "allowed" | "blocked";
+
+export default function Dashboard() {
+  const [logs, setLogs] = useState<PlateLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [gateStatus, setGateStatus] = useState<GateStatus>("idle");
+
+  useEffect(() => {
+    document.body.classList.add("dashboard-active");
+    
+    return () => {
+      document.body.classList.remove("dashboard-active");
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadLogs = async () => {
+      setLoading(true);
+      try {
+        setGateStatus("checking");
+
+        const data = await fetchPlateLogs();
+        setLogs(data);
+
+        if (data.length > 0) {
+          const last = data[0];
+          setGateStatus(last.allowed ? "allowed" : "blocked");
+        } else {
+          setGateStatus("idle");
+        }
+      } catch (e) {
+        console.error("Errore caricamento log", e);
+        setGateStatus("blocked");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadLogs();
+    const interval = setInterval(loadLogs, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="dashboard-container">
+      <div className="dashboard">
+        {/* HEADER - NON TOCCARE */}
+        <header className="dashboard-header">
+          <button className="btn-entry">🚪 ENTRATA</button>
+
+          <div className="datetime-box">
+            <div className="date">
+              {new Date().toLocaleDateString("it-IT", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+            <div className="time">
+              {new Date().toLocaleTimeString("it-IT")}
+            </div>
+          </div>
+
+          <button className="btn-exit">USCITA ↩️</button>
+        </header>
+
+        {/* KPI BAR - NON TOCCARE */}
+        <KpiBar logs={logs} />
+
+        {/* BODY - GRIGLIA 3x2 CORRETTA */}
+        <main className="dashboard-grid">
+          {/* BOX 1: TARGHE LIVE (SINISTRA ALTO) */}
+          <section className="grid-cell targhe-live">
+            <h3>📝 Targhe rilevate</h3>
+            {/* PLACEHOLDER per targhe - manteniamo PlatesStream se esiste */}
+            <div className="plates-placeholder">
+              {logs.slice(0, 6).map((log, index) => (
+                <div key={index} className="plate-item">
+                  <span className="plate-text">{log.plate}</span>
+                  <span className="plate-time">
+                    {new Date(log.timestamp).toLocaleTimeString('it-IT', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+              ))}
+              {logs.length === 0 && (
+                <div className="no-plates">
+                  <div>AA123BB - 10:30</div>
+                  <div>BC456CD - 10:28</div>
+                  <div>DE789EF - 10:25</div>
+                  <div>FG012GH - 10:22</div>
+                  <div>HI345IJ - 10:20</div>
+                  <div>JK678KL - 10:18</div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* BOX 2: FOTO TARGA (CENTRO ALTO) - NON TOCCARE */}
+          <section className="grid-cell foto-targa">
+            <div className="photo-box">
+              <div className="photo-placeholder">📸 Foto targa</div>
+            </div>
+          </section>
+
+          {/* BOX 3: TRANSITI LIVE + STATO BARRIERA (DESTRA ALTO) */}
+          <section className="grid-cell transiti-live">
+            <div className="live-box">
+              <h3>🚦 Transiti in tempo reale</h3>
+              
+              {/* Stato barriera */}
+              <div className="gate-status-container">
+                <AccessGate
+                  status={gateStatus}
+                  onReset={() => setGateStatus("idle")}
+                />
+              </div>
+              
+              {/* Lista transiti recenti */}
+              <div className="transits-list">
+                <div className="list-header">
+                  <span>ORA</span>
+                  <span>TARGA</span>
+                  <span>STATO</span>
+                </div>
+                {logs.slice(0, 5).map((log, index) => (
+                  <div key={index} className={`transit-item ${log.allowed ? 'allowed' : 'blocked'}`}>
+                    <span className="transit-time">
+                      {new Date(log.timestamp).toLocaleTimeString('it-IT', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                      })}
+                    </span>
+                    <span className="transit-plate">{log.plate}</span>
+                    <span className={`transit-status ${log.allowed ? 'allowed' : 'blocked'}`}>
+                      {log.allowed ? '✓' : '✗'}
+                    </span>
+                  </div>
+                ))}
+                {logs.length === 0 && !loading && (
+                  <div className="placeholder-transits">
+                    <div className="transit-item allowed">
+                      <span className="transit-time">10:30:22</span>
+                      <span className="transit-plate">AA123BB</span>
+                      <span className="transit-status allowed">✓</span>
+                    </div>
+                    <div className="transit-item blocked">
+                      <span className="transit-time">10:28:15</span>
+                      <span className="transit-plate">BC456CD</span>
+                      <span className="transit-status blocked">✗</span>
+                    </div>
+                    <div className="transit-item allowed">
+                      <span className="transit-time">10:25:45</span>
+                      <span className="transit-plate">DE789EF</span>
+                      <span className="transit-status allowed">✓</span>
+                    </div>
+                  </div>
+                )}
+                {loading && (
+                  <div className="loading-transits">Caricamento transiti...</div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* BOX 4: VUOTO (SINISTRA BASSO) */}
+          <section className="grid-cell spazio-vuoto">
+            {/* Vuoto - eventuali statistiche secondarie */}
+            <div className="empty-placeholder">
+              {/* Puoi aggiungere contenuto qui in futuro */}
+            </div>
+          </section>
+
+          {/* BOX 5: MENU (CENTRO BASSO) - NON TOCCARE */}
+          <section className="grid-cell menu">
+            <div className="menu-box">
+              <button>🎟️ Abbonamenti</button>
+              <button>📄 Contratti</button>
+              <button>📊 Report</button>
+              <button>⚙️ Impostazioni</button>
+            </div>
+          </section>
+
+          {/* BOX 6: STORICO (DESTRA BASSO) */}
+          <section className="grid-cell storico">
+            <div className="history-box">
+              <PlatesLogTable logs={logs} loading={loading} />
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+pages/ingress/index.tsx    
+
+
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import "@/styles/ingresso.css";
+
+import ClientRecognitionBar from "@/components/ingress/ClientRecognitionBar";
+import { lookupCustomerByPlate } from "@/services/customerLookupService";
+import type { CustomerLookupResult } from "@/services/customerLookupService";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+
+/* =========================
+   UTILS
+========================= */
+function nowLabel() {
+  const d = new Date();
+  return {
+    time: d.toLocaleTimeString("it-IT"),
+    date: d.toLocaleDateString("it-IT"),
+  };
+}
+
+/* =========================
+   PAGE
+========================= */
+export default function Ingresso() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  /**
+   * 👉 La targa arriva dalla Dashboard
+   * navigate("/ingress", { state: { plate: "AB123CD" } })
+   */
+  const initialPlate =
+    (location.state as { plate?: string })?.plate ?? "";
+
+  const [plate, setPlate] = useState(initialPlate);
+
+  // 🔒 la targa NON è editabile se arriva dalla dashboard
+  const isPlateLocked = Boolean(initialPlate);
+
+  const plateUpper = useMemo(
+    () => plate.replace(/\s+/g, "").toUpperCase(),
+    [plate]
+  );
+
+  const plateDebounced = useDebouncedValue(plateUpper, 450);
+
+  const [lookup, setLookup] = useState<CustomerLookupResult>({
+    status: "idle",
+  });
+
+  /* =========================
+     CLOCK HEADER
+  ========================= */
+  const [clock, setClock] = useState(() => nowLabel());
+
+  useEffect(() => {
+    const t = setInterval(() => setClock(nowLabel()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  /* =========================
+     CLIENT LOOKUP (DEBOUNCED)
+  ========================= */
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      if (plateDebounced.length < 5) {
+        setLookup({ status: "idle" });
+        return;
+      }
+
+      setLookup({ status: "loading" });
+
+      try {
+        const res = await lookupCustomerByPlate(plateDebounced);
+        if (!active) return;
+        setLookup(res);
+      } catch {
+        if (!active) return;
+        setLookup({ status: "error" });
+      }
+    };
+
+    run();
+
+    return () => {
+      active = false;
+    };
+  }, [plateDebounced]);
+
+  /* =========================
+     RENDER
+  ========================= */
+  return (
+    <div className="ingresso-container">
+      <div className="ingresso">
+        {/* HEADER */}
+        <header className="ingresso-header">
+          <div className="header-left">
+            🕐 ENTRATA: <strong>{clock.time}</strong> {clock.date}
+          </div>
+
+          <div className="header-center">
+            🎯 REGISTRAZIONE INGRESSO – NUOVA SOSTA
+          </div>
+
+          <div className="header-right">⏱ USCITA: --:--:--</div>
+        </header>
+
+        {/* BARRA RICONOSCIMENTO CLIENTE */}
+        <ClientRecognitionBar result={lookup} />
+
+        {/* GRID */}
+        <main className="ingresso-grid">
+          {/* =====================
+              BOX SINISTRO
+          ====================== */}
+          <section className="grid-box">
+            <h3>🚗 Dati veicolo</h3>
+
+            <div className="form-field">
+              <label>📍 Targa</label>
+              <input
+                value={plateUpper}
+                disabled={isPlateLocked}
+                onChange={(e) => setPlate(e.target.value)}
+                placeholder="Es. AB123CD"
+              />
+            </div>
+
+            <div className="form-field">
+              <label>🚗 Modello</label>
+              <input placeholder="Seleziona modello" />
+            </div>
+
+            <div className="form-field">
+              <label>🏭 Marca</label>
+              <input disabled placeholder="—" />
+            </div>
+
+            <div className="form-field">
+              <label>🎨 Colore</label>
+              <input placeholder="Seleziona colore" />
+            </div>
+
+            <div className="form-field">
+              <label>📊 Categoria</label>
+              <input disabled placeholder="—" />
+            </div>
+
+            <div className="form-field">
+              <label>💰 Tariffa</label>
+              <input disabled placeholder="€ / h" />
+            </div>
+          </section>
+
+          {/* =====================
+              BOX CENTRALE
+          ====================== */}
+          <section className="grid-box">
+            <h3>📸 Foto + Servizi</h3>
+
+            <div className="photo-placeholder">
+              📷 Foto veicolo
+            </div>
+
+            <h4 style={{ margin: "0 0 8px", opacity: 0.9 }}>
+              🏷️ Convenzioni
+            </h4>
+            <div className="services-row">
+              <button>Hotel</button>
+              <button>Stadio</button>
+              <button>Eventi</button>
+            </div>
+
+            <h4 style={{ margin: "12px 0 8px", opacity: 0.9 }}>
+              🧼 Lavaggio
+            </h4>
+            <div className="services-row">
+              <button>Esterno</button>
+              <button>Completo</button>
+              <button>Interni</button>
+            </div>
+          </section>
+
+          {/* =====================
+              BOX DESTRO
+          ====================== */}
+          <section className="grid-box">
+            <h3>⚙️ Azioni</h3>
+
+            <button
+              className="btn cancel"
+              onClick={() => navigate(-1)}
+            >
+              ❌ Annulla
+            </button>
+
+            <button className="btn primary">
+              🎫 Stampa ticket ingresso
+            </button>
+
+            <button className="btn secondary">
+              🏷️ Stampa convenzione
+            </button>
+
+            <button className="btn secondary">
+              🧼 Stampa lavaggio
+            </button>
+
+            <div className="summary">
+              <strong>ℹ️ Riepilogo</strong>
+              <div>• Targa: {plateUpper || "—"}</div>
+              <div>
+                • Cliente:{" "}
+                {lookup.status === "found"
+                  ? lookup.customer.name
+                  : "—"}
+              </div>
+              <div>
+                • Insoluti:{" "}
+                {lookup.status === "found"
+                  ? `${lookup.outstandings.count} (€ ${lookup.outstandings.total.toFixed(
+                      2
+                    )})`
+                  : "—"}
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+
+src/ingress/index.tsx    
+
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import "@/styles/ingresso.css";
+
+import ClientRecognitionBar from "@/components/ingress/ClientRecognitionBar";
+import { lookupCustomerByPlate } from "@/services/customerLookupService";
+import type { CustomerLookupResult } from "@/services/customerLookupService";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+
+function nowLabel() {
+  const d = new Date();
+  return {
+    time: d.toLocaleTimeString("it-IT"),
+    date: d.toLocaleDateString("it-IT"),
+  };
+}
+
+export default function Ingresso() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // 🔑 TARGA PROVENIENTE DALLA DASHBOARD
+  const initialPlate = location.state?.plate ?? "";
+
+  const [plate, setPlate] = useState(initialPlate);
+  const plateDebounced = useDebouncedValue(plate, 450);
+
+  const [lookup, setLookup] = useState<CustomerLookupResult>({
+    status: "idle",
+  });
+
+  // clock header
+  const [clock, setClock] = useState(() => nowLabel());
+  useEffect(() => {
+    const t = setInterval(() => setClock(nowLabel()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // 🔍 lookup cliente / veicolo automatico
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      const clean = plateDebounced.replace(/\s+/g, "").toUpperCase();
+      if (clean.length < 5) {
+        setLookup({ status: "idle" });
+        return;
+      }
+
+      setLookup({ status: "loading" });
+      const res = await lookupCustomerByPlate(clean);
+      if (!active) return;
+      setLookup(res);
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [plateDebounced]);
+
+  const plateUpper = useMemo(
+    () => plate.replace(/\s+/g, "").toUpperCase(),
+    [plate]
+  );
+
+  return (
+    <div className="ingresso-container">
+      <div className="ingresso">
+        {/* HEADER */}
+        <header className="ingresso-header">
+          <div className="header-left">
+            🕐 ENTRATA: <strong>{clock.time}</strong> {clock.date}
+          </div>
+
+          <div className="header-center">
+            🎯 REGISTRAZIONE INGRESSO – NUOVA SOSTA
+          </div>
+
+          <div className="header-right">⏱ USCITA: --:--:--</div>
+        </header>
+
+        {/* BARRA RICONOSCIMENTO CLIENTE */}
+        <ClientRecognitionBar result={lookup} />
+
+        {/* GRID */}
+        <main className="ingresso-grid">
+          {/* DATI VEICOLO */}
+          <section className="grid-box">
+            <h3>🚗 Dati veicolo</h3>
+
+            <div className="form-field">
+              <label>📍 Targa</label>
+              <input
+                value={plateUpper}
+                readOnly
+                className="readonly"
+              />
+            </div>
+
+            <div className="form-field">
+              <label>🚗 Modello</label>
+              <input
+                value={
+                  lookup.status === "found"
+                    ? lookup.vehicle?.model_name ?? ""
+                    : ""
+                }
+                placeholder="—"
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>🏭 Marca</label>
+              <input
+                value={
+                  lookup.status === "found"
+                    ? lookup.vehicle?.brand_name ?? ""
+                    : ""
+                }
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>🎨 Colore</label>
+              <input
+                value={
+                  lookup.status === "found"
+                    ? lookup.vehicle?.color_name ?? ""
+                    : ""
+                }
+                placeholder="Seleziona..."
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>📊 Categoria</label>
+              <input
+                value={
+                  lookup.status === "found"
+                    ? lookup.vehicle?.category_name ?? ""
+                    : ""
+                }
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>💰 Tariffa</label>
+              <input
+                value={
+                  lookup.status === "found"
+                    ? `€ ${lookup.vehicle?.hourly_rate ?? "--"} / h`
+                    : "—"
+                }
+                disabled
+              />
+            </div>
+          </section>
+
+          {/* FOTO + SERVIZI */}
+          <section className="grid-box">
+            <h3>📸 Foto + Servizi</h3>
+
+            <div className="photo-placeholder">📷 Foto veicolo</div>
+
+            <h4>🏷️ Convenzioni</h4>
+            <div className="services-row">
+              <button>Hotel</button>
+              <button>Stadio</button>
+              <button>Eventi</button>
+            </div>
+
+            <h4>🧼 Lavaggio</h4>
+            <div className="services-row">
+              <button>Esterno</button>
+              <button>Completo</button>
+              <button>Interni</button>
+            </div>
+          </section>
+
+          {/* AZIONI */}
+          <section className="grid-box">
+            <h3>⚙️ Azioni</h3>
+
+            <button className="btn cancel" onClick={() => navigate(-1)}>
+              ❌ Annulla
+            </button>
+
+            <button className="btn primary">
+              🎫 Stampa ticket ingresso
+            </button>
+
+            <button className="btn secondary">
+              🏷️ Stampa convenzione
+            </button>
+
+            <button className="btn secondary">
+              🧼 Stampa lavaggio
+            </button>
+
+            <div className="summary">
+              <strong>ℹ️ Riepilogo</strong>
+              <div>• Targa: {plateUpper}</div>
+              <div>
+                • Cliente:{" "}
+                {lookup.status === "found"
+                  ? lookup.customer.name
+                  : "Occasionale"}
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+
+Dashboard.tsx: 
+
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import PlatesLogTable from "@/components/PlatesLogTable";
+import KpiBar from "@/components/dashboard/KpiBar";
+import AccessGate from "@/components/dashboard/AccessGate";
+
+import { fetchPlateLogs } from "@/services/plateLogsService";
+import type { PlateLog } from "@/types/plateLog";
+
+import "@/styles/dashboard.css";
+
+type GateStatus = "idle" | "checking" | "allowed" | "blocked";
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+
+  const [logs, setLogs] = useState<PlateLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [gateStatus, setGateStatus] = useState<GateStatus>("idle");
+
+  const [selectedPlate, setSelectedPlate] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.body.classList.add("dashboard-active");
+    return () => {
+      document.body.classList.remove("dashboard-active");
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadLogs = async () => {
+      setLoading(true);
+      try {
+        setGateStatus("checking");
+
+        const data = await fetchPlateLogs();
+        setLogs(data);
+
+        if (data.length > 0) {
+          const last = data[0];
+          setGateStatus(last.allowed ? "allowed" : "blocked");
+        } else {
+          setGateStatus("idle");
+        }
+      } catch (e) {
+        console.error("Errore caricamento log", e);
+        setGateStatus("blocked");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadLogs();
+    const interval = setInterval(loadLogs, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="dashboard-container">
+      <div className="dashboard">
+        {/* HEADER */}
+        <header className="dashboard-header">
+          <button
+            className="btn-entry"
+            disabled={!selectedPlate}
+            onClick={() => {
+              if (!selectedPlate) return;
+              navigate("/ingress", {
+                state: {
+                  plate: selectedPlate,
+                },
+              });
+            }}
+          >
+            🚪 ENTRATA
+          </button>
+
+          <div className="datetime-box">
+            <div className="date">
+              {new Date().toLocaleDateString("it-IT", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+            <div className="time">
+              {new Date().toLocaleTimeString("it-IT")}
+            </div>
+          </div>
+
+          <button className="btn-exit">USCITA ↩️</button>
+        </header>
+
+        {/* KPI BAR */}
+        <KpiBar logs={logs} />
+
+        {/* BODY */}
+        <main className="dashboard-grid">
+          {/* TARGHE LIVE */}
+          <section className="grid-cell targhe-live">
+            <h3>📝 Targhe rilevate</h3>
+
+            <div className="plates-placeholder">
+              {logs.slice(0, 6).map((log, index) => (
+                <div
+                  key={index}
+                  className={`plate-item ${
+                    selectedPlate === log.plate ? "active" : ""
+                  }`}
+                  onClick={() => setSelectedPlate(log.plate)}
+                >
+                  <span className="plate-text">{log.plate}</span>
+                  <span className="plate-time">
+                    {new Date(log.timestamp).toLocaleTimeString("it-IT", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              ))}
+
+              {logs.length === 0 && (
+                <div className="no-plates">
+                  <div>AA123BB - 10:30</div>
+                  <div>BC456CD - 10:28</div>
+                  <div>DE789EF - 10:25</div>
+                  <div>FG012GH - 10:22</div>
+                  <div>HI345IJ - 10:20</div>
+                  <div>JK678KL - 10:18</div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* FOTO */}
+          <section className="grid-cell foto-targa">
+            <div className="photo-box">
+              <div className="photo-placeholder">📸 Foto targa</div>
+            </div>
+          </section>
+
+          {/* TRANSITI LIVE */}
+          <section className="grid-cell transiti-live">
+            <div className="live-box">
+              <h3>🚦 Transiti in tempo reale</h3>
+
+              <div className="gate-status-container">
+                <AccessGate
+                  status={gateStatus}
+                  onReset={() => setGateStatus("idle")}
+                />
+              </div>
+
+              <div className="transits-list">
+                <div className="list-header">
+                  <span>ORA</span>
+                  <span>TARGA</span>
+                  <span>STATO</span>
+                </div>
+
+                {logs.slice(0, 5).map((log, index) => (
+                  <div
+                    key={index}
+                    className={`transit-item ${
+                      log.allowed ? "allowed" : "blocked"
+                    }`}
+                  >
+                    <span className="transit-time">
+                      {new Date(log.timestamp).toLocaleTimeString("it-IT", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      })}
+                    </span>
+                    <span className="transit-plate">{log.plate}</span>
+                    <span
+                      className={`transit-status ${
+                        log.allowed ? "allowed" : "blocked"
+                      }`}
+                    >
+                      {log.allowed ? "✓" : "✗"}
+                    </span>
+                  </div>
+                ))}
+
+                {loading && (
+                  <div className="loading-transits">
+                    Caricamento transiti...
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* SPAZIO VUOTO */}
+          <section className="grid-cell spazio-vuoto">
+            <div className="empty-placeholder" />
+          </section>
+
+          {/* MENU */}
+          <section className="grid-cell menu">
+            <div className="menu-box">
+              <button>🎟️ Abbonamenti</button>
+              <button>📄 Contratti</button>
+              <button>📊 Report</button>
+              <button>⚙️ Impostazioni</button>
+            </div>
+          </section>
+
+          {/* STORICO */}
+          <section className="grid-cell storico">
+            <div className="history-box">
+              <PlatesLogTable logs={logs} loading={loading} />
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+
+ingresso/index.tsx  
+
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import "@/styles/ingresso.css";
+
+import ClientRecognitionBar from "@/components/ingress/ClientRecognitionBar";
+import { lookupCustomerByPlate } from "@/services/customerLookupService";
+import type { CustomerLookupResult } from "@/services/customerLookupService";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+
+function nowLabel() {
+  const d = new Date();
+  return {
+    time: d.toLocaleTimeString("it-IT"),
+    date: d.toLocaleDateString("it-IT"),
+  };
+}
+
+export default function Ingresso() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // 🔑 targa dalla dashboard
+  const initialPlate = location.state?.plate ?? "";
+
+  const [plate, setPlate] = useState(() => initialPlate);
+  const plateDebounced = useDebouncedValue(plate, 450);
+
+  const [lookup, setLookup] = useState<CustomerLookupResult>({
+    status: "idle",
+  });
+
+  // clock
+  const [clock, setClock] = useState(() => nowLabel());
+  useEffect(() => {
+    const t = setInterval(() => setClock(nowLabel()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // lookup automatico cliente/veicolo
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      const clean = plateDebounced.replace(/\s+/g, "").toUpperCase();
+      if (clean.length < 5) {
+        setLookup({ status: "idle" });
+        return;
+      }
+
+      setLookup({ status: "loading" });
+      const res = await lookupCustomerByPlate(clean);
+      if (!active) return;
+      setLookup(res);
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [plateDebounced]);
+
+  const plateUpper = useMemo(
+    () => plate.replace(/\s+/g, "").toUpperCase(),
+    [plate]
+  );
+
+  return (
+    <div className="ingresso-container">
+      <div className="ingresso">
+        <header className="ingresso-header">
+          <div className="header-left">
+            🕐 ENTRATA: <strong>{clock.time}</strong> {clock.date}
+          </div>
+          <div className="header-center">
+            🎯 REGISTRAZIONE INGRESSO – NUOVA SOSTA
+          </div>
+          <div className="header-right">⏱ USCITA: --:--:--</div>
+        </header>
+
+        <ClientRecognitionBar result={lookup} />
+
+        <main className="ingresso-grid">
+          {/* DATI VEICOLO */}
+          <section className="grid-box">
+            <h3>🚗 Dati veicolo</h3>
+
+            <div className="form-field">
+              <label>📍 Targa</label>
+              <input value={plateUpper} readOnly className="readonly" />
+            </div>
+
+            <div className="form-field">
+              <label>🚗 Modello</label>
+              <input
+                value={lookup.status === "found" ? lookup.vehicle?.model_name ?? "" : ""}
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>🏭 Marca</label>
+              <input
+                value={lookup.status === "found" ? lookup.vehicle?.brand_name ?? "" : ""}
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>🎨 Colore</label>
+              <input
+                value={lookup.status === "found" ? lookup.vehicle?.color_name ?? "" : ""}
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>📊 Categoria</label>
+              <input
+                value={lookup.status === "found" ? lookup.vehicle?.category_name ?? "" : ""}
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>💰 Tariffa</label>
+              <input
+                value={
+                  lookup.status === "found"
+                    ? `€ ${lookup.vehicle?.hourly_rate ?? "--"} / h`
+                    : "—"
+                }
+                disabled
+              />
+            </div>
+          </section>
+
+          {/* FOTO + SERVIZI */}
+          <section className="grid-box">
+            <h3>📸 Foto + Servizi</h3>
+            <div className="photo-placeholder">📷 Foto veicolo</div>
+          </section>
+
+          {/* AZIONI */}
+          <section className="grid-box">
+            <h3>⚙️ Azioni</h3>
+
+            <button className="btn cancel" onClick={() => navigate(-1)}>
+              ❌ Annulla
+            </button>
+
+            <button className="btn primary">
+              🎫 Stampa ticket ingresso
+            </button>
+
+            <div className="summary">
+              <strong>ℹ️ Riepilogo</strong>
+              <div>• Targa: {plateUpper}</div>
+              <div>
+                • Cliente:{" "}
+                {lookup.status === "found"
+                  ? lookup.customer.name
+                  : "Occasionale"}
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+
+src/pages/ingresso/index.tsx    
+
+
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import "@/styles/ingresso.css";
+
+import ClientRecognitionBar from "@/components/ingress/ClientRecognitionBar";
+import { lookupCustomerByPlate } from "@/services/customerLookupService";
+import type { CustomerLookupResult } from "@/services/customerLookupService";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+
+import { fetchVehicleProfileByPlate } from "@/services/vehicleProfileService";
+import type { VehicleProfileByPlate } from "@/types/vehicleProfile";
+
+import { calculateBaseTariff } from "@/services/pricingService";
+
+function nowLabel() {
+  const d = new Date();
+  return {
+    time: d.toLocaleTimeString("it-IT"),
+    date: d.toLocaleDateString("it-IT"),
+  };
+}
+
+export default function Ingresso() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // 🔑 TARGA PROVENIENTE DALLA DASHBOARD
+  const initialPlate = location.state?.plate ?? "";
+
+  const [plate] = useState(() => initialPlate);
+  const plateDebounced = useDebouncedValue(plate, 450);
+
+  const [lookup, setLookup] = useState<CustomerLookupResult>({
+    status: "idle",
+  });
+
+  // 🚗 PROFILO VEICOLO
+  const [vehicleProfile, setVehicleProfile] =
+    useState<VehicleProfileByPlate | null>(null);
+
+  // 💰 TARIFFA CALCOLATA
+  const [tariff, setTariff] = useState<number | null>(null);
+
+  // 🕒 CLOCK HEADER
+  const [clock, setClock] = useState(() => nowLabel());
+  useEffect(() => {
+    const t = setInterval(() => setClock(nowLabel()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const plateUpper = useMemo(
+    () => plate.replace(/\s+/g, "").toUpperCase(),
+    [plate]
+  );
+
+  /* ======================================================
+     🔍 LOOKUP CLIENTE (debounced)
+     ====================================================== */
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      const clean = plateDebounced.replace(/\s+/g, "").toUpperCase();
+      if (clean.length < 5) {
+        setLookup({ status: "idle" });
+        return;
+      }
+
+      setLookup({ status: "loading" });
+      const res = await lookupCustomerByPlate(clean);
+      if (!active) return;
+      setLookup(res);
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [plateDebounced]);
+
+  /* ======================================================
+     🚗 LOOKUP PROFILO VEICOLO
+     ====================================================== */
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      if (plateUpper.length < 5) {
+        setVehicleProfile(null);
+        return;
+      }
+
+      const tenantId = "5f018af5-8e61-4c5c-a4f8-aa08edcadcb5";
+
+      const profile = await fetchVehicleProfileByPlate(
+        plateUpper,
+        tenantId
+      );
+
+      if (!active) return;
+      setVehicleProfile(profile);
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [plateUpper]);
+
+  /* ======================================================
+     💰 CALCOLO TARIFFA BASE (STEP C)
+     ====================================================== */
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      if (!vehicleProfile?.category?.id) {
+        setTariff(null);
+        return;
+      }
+
+      const tenantId = "5f018af5-8e61-4c5c-a4f8-aa08edcadcb5";
+
+      const result = await calculateBaseTariff(
+        tenantId,
+        vehicleProfile.category.id
+      );
+
+      if (!active) return;
+
+      setTariff(result ? result.value : null);
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [vehicleProfile?.category?.id]);
+
+  return (
+    <div className="ingresso-container">
+      <div className="ingresso">
+        {/* HEADER */}
+        <header className="ingresso-header">
+          <div className="header-left">
+            🕐 ENTRATA: <strong>{clock.time}</strong> {clock.date}
+          </div>
+
+          <div className="header-center">
+            🎯 REGISTRAZIONE INGRESSO – NUOVA SOSTA
+          </div>
+
+          <div className="header-right">⏱ USCITA: --:--:--</div>
+        </header>
+
+        {/* BARRA RICONOSCIMENTO CLIENTE */}
+        <ClientRecognitionBar result={lookup} />
+
+        {/* GRID PRINCIPALE */}
+        <main className="ingresso-grid">
+          {/* =======================
+              DATI VEICOLO
+             ======================= */}
+          <section className="grid-box">
+            <h3>🚗 Dati veicolo</h3>
+
+            <div className="form-field">
+              <label>📍 Targa</label>
+              <input value={plateUpper} readOnly className="readonly" />
+            </div>
+
+            <div className="form-field">
+              <label>🚗 Modello</label>
+              <input
+                value={vehicleProfile?.model?.name ?? ""}
+                placeholder="—"
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>🏭 Marca</label>
+              <input
+                value={vehicleProfile?.brand?.name ?? ""}
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>🎨 Colore</label>
+              <input
+                value={vehicleProfile?.color?.name ?? ""}
+                placeholder="Seleziona..."
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>📊 Categoria</label>
+              <input
+                value={vehicleProfile?.category?.name ?? ""}
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>💰 Tariffa</label>
+              <input
+                value={tariff !== null ? `€ ${tariff} / h` : "—"}
+                disabled
+              />
+            </div>
+          </section>
+
+          {/* =======================
+              FOTO + SERVIZI
+             ======================= */}
+          <section className="grid-box">
+            <h3>📸 Foto + Servizi</h3>
+            <div className="photo-placeholder">📷 Foto veicolo</div>
+          </section>
+
+          {/* =======================
+              AZIONI
+             ======================= */}
+          <section className="grid-box">
+            <h3>⚙️ Azioni</h3>
+
+            <button className="btn cancel" onClick={() => navigate(-1)}>
+              ❌ Annulla
+            </button>
+
+            <button className="btn primary">
+              🎫 Stampa ticket ingresso
+            </button>
+
+            <div className="summary">
+              <strong>ℹ️ Riepilogo</strong>
+              <div>• Targa: {plateUpper}</div>
+              <div>
+                • Cliente:{" "}
+                {lookup.status === "found"
+                  ? lookup.customer.name
+                  : "Occasionale"}
+              </div>
+              <div>
+                • Veicolo:{" "}
+                {vehicleProfile
+                  ? `${vehicleProfile.brand?.name ?? ""} ${vehicleProfile.model?.name ?? ""}`
+                  : "Nuovo veicolo"}
+              </div>
+              <div>
+                • Tariffa:{" "}
+                {tariff !== null ? `€ ${tariff} / h` : "—"}
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+
+ingresso/index.tsx  
+
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import "@/styles/ingresso.css";
+
+import ClientRecognitionBar from "@/components/ingress/ClientRecognitionBar";
+import { lookupCustomerByPlate } from "@/services/customerLookupService";
+import type { CustomerLookupResult } from "@/services/customerLookupService";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+
+import { fetchVehicleProfileByPlate } from "@/services/vehicleProfileService";
+import type { VehicleProfileByPlate } from "@/types/vehicleProfile";
+
+import {
+  searchVehicleModels,
+  type VehicleModelSearchResult,
+} from "@/services/vehicleModelSearchService";
+
+import { createParkingSessionWithTicket } 
+from "@/services/parkingSessionService";
+
+function nowLabel() {
+  const d = new Date();
+  return {
+    time: d.toLocaleTimeString("it-IT"),
+    date: d.toLocaleDateString("it-IT"),
+  };
+}
+
+const TENANT_ID = "5f018af5-8e61-4c5c-a4f8-aa08edcadcb5";
+
+export default function Ingresso() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  /* ===============================
+     TARGA DALLA DASHBOARD
+     =============================== */
+  const initialPlate = location.state?.plate ?? "";
+  const [plate] = useState(() => initialPlate);
+  const plateDebounced = useDebouncedValue(plate, 400);
+
+  const plateUpper = useMemo(
+    () => plate.replace(/\s+/g, "").toUpperCase(),
+    [plate]
+  );
+
+  /* ===============================
+     STATO CLIENTE
+     =============================== */
+  const [lookup, setLookup] = useState<CustomerLookupResult>({
+    status: "idle",
+  });
+
+  /* ===============================
+     PROFILO VEICOLO (SE ESISTE)
+     =============================== */
+  const [vehicleProfile, setVehicleProfile] =
+    useState<VehicleProfileByPlate | null>(null);
+
+  /* ===============================
+     AUTOCOMPLETE MODELLI
+     =============================== */
+  const [modelInput, setModelInput] = useState("");
+  const [modelResults, setModelResults] = useState<
+    VehicleModelSearchResult[]
+  >([]);
+  const [selectedModel, setSelectedModel] =
+    useState<VehicleModelSearchResult | null>(null);
+
+  /* ===============================
+     CLOCK HEADER
+     =============================== */
+  const [clock, setClock] = useState(() => nowLabel());
+  useEffect(() => {
+    const t = setInterval(() => setClock(nowLabel()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  /* ===============================
+     LOOKUP CLIENTE / ABBONAMENTO
+     =============================== */
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      if (plateDebounced.length < 5) {
+        setLookup({ status: "idle" });
+        return;
+      }
+
+      setLookup({ status: "loading" });
+      const res = await lookupCustomerByPlate(plateUpper);
+      if (!active) return;
+      setLookup(res);
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [plateDebounced, plateUpper]);
+
+  /* ===============================
+     LOOKUP PROFILO VEICOLO
+     =============================== */
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      if (plateUpper.length < 5) {
+        setVehicleProfile(null);
+        return;
+      }
+
+      const profile = await fetchVehicleProfileByPlate(
+        plateUpper,
+        TENANT_ID
+      );
+
+      if (!active) return;
+
+      setVehicleProfile(profile);
+      if (profile) {
+        setSelectedModel(null);
+        setModelInput("");
+        setModelResults([]);
+      }
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [plateUpper]);
+
+  /* ===============================
+     AUTOCOMPLETE MODELLI (NUOVO VEICOLO)
+     =============================== */
+  useEffect(() => {
+    if (vehicleProfile) return;
+    if (modelInput.length < 2) {
+      setModelResults([]);
+      return;
+    }
+
+    const run = async () => {
+      const res = await searchVehicleModels(
+        modelInput,
+        TENANT_ID,
+        10
+      );
+      setModelResults(res);
+    };
+
+    run();
+  }, [modelInput, vehicleProfile]);
+
+  /* ===============================
+     CREA SESSIONE + STAMPA TICKET
+     =============================== */
+  const handlePrintTicket = async () => {
+    const categoryId =
+      vehicleProfile?.category?.id ?? selectedModel?.category_id;
+
+    if (!categoryId) {
+      alert("Categoria veicolo mancante");
+      return;
+    }
+
+    try {
+      const result = await createParkingSessionWithTicket({
+  tenantId: TENANT_ID,
+  categoryId,
+  vehicleProfileId: vehicleProfile?.id ?? null,
+  modelId: selectedModel?.model_id ?? null,
+  subscriptionId: lookup.subscription?.id ?? null,
+  conventionId: lookup.convention?.id ?? null,
+});
+
+// opzionale: log per verifica
+console.log("🎟 Ticket:", result.ticket.number);
+
+
+      await generateTicket(TENANT_ID, session.id);
+
+      navigate("/");
+    } catch (err) {
+      console.error(err);
+      alert("Errore durante la creazione del ticket");
+    }
+  };
+
+  /* ===============================
+     RENDER
+     =============================== */
+  return (
+    <div className="ingresso-container">
+      <div className="ingresso">
+        <header className="ingresso-header">
+          <div className="header-left">
+            🕐 ENTRATA: <strong>{clock.time}</strong> {clock.date}
+          </div>
+          <div className="header-center">
+            🎯 REGISTRAZIONE INGRESSO – NUOVA SOSTA
+          </div>
+          <div className="header-right">⏱ USCITA: --:--:--</div>
+        </header>
+
+        <ClientRecognitionBar result={lookup} />
+
+        <main className="ingresso-grid">
+          {/* ================= DATI VEICOLO ================= */}
+          <section className="grid-box">
+            <h3>🚗 Dati veicolo</h3>
+
+            <div className="form-field">
+              <label>📍 Targa</label>
+              <input value={plateUpper} readOnly className="readonly" />
+            </div>
+
+            <div className="form-field">
+              <label>🚗 Modello</label>
+              <input
+                value={
+                  vehicleProfile
+                    ? vehicleProfile.model?.name ?? ""
+                    : selectedModel?.model_name ?? modelInput
+                }
+                onChange={(e) => setModelInput(e.target.value)}
+                disabled={!!vehicleProfile}
+                placeholder="Inizia a digitare il modello"
+              />
+
+              {!vehicleProfile && modelResults.length > 0 && (
+                <div className="autocomplete">
+                  {modelResults.map((m) => (
+                    <div
+                      key={m.model_id}
+                      className="autocomplete-item"
+                      onClick={() => {
+                        setSelectedModel(m);
+                        setModelInput(m.model_name);
+                        setModelResults([]);
+                      }}
+                    >
+                      {m.model_name} — {m.brand_name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="form-field">
+              <label>🏭 Marca</label>
+              <input
+                value={
+                  vehicleProfile
+                    ? vehicleProfile.brand?.name ?? ""
+                    : selectedModel?.brand_name ?? ""
+                }
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>📊 Categoria</label>
+              <input
+                value={
+                  vehicleProfile
+                    ? vehicleProfile.category?.name ?? ""
+                    : selectedModel?.category_name ?? ""
+                }
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>💰 Tariffa</label>
+              <input value="Calcolo in uscita" disabled />
+            </div>
+          </section>
+
+          {/* ================= FOTO ================= */}
+          <section className="grid-box">
+            <h3>📸 Foto</h3>
+            <div className="photo-placeholder">📷 Foto veicolo</div>
+          </section>
+
+          {/* ================= AZIONI ================= */}
+          <section className="grid-box">
+            <h3>⚙️ Azioni</h3>
+
+            <button className="btn cancel" onClick={() => navigate(-1)}>
+              ❌ Annulla
+            </button>
+
+            <button
+              className="btn primary"
+              onClick={handlePrintTicket}
+            >
+              🎫 Stampa ticket ingresso
+            </button>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+exit/index.tsx  
+
+import { useMemo, useState } from "react";
+import "@/styles/exit.css";
+
+import {
+  fetchOpenSessionByTicket,
+  closeParkingSession,
+} from "@/services/parkingSessionService";
+
+import { calculateParkingAmount } from "@/services/pricingEngine";
+import { createPayment } from "@/services/paymentsService";
+import type { PaymentMethod } from "@/services/paymentsService";
+
+type ExitStatus = "idle" | "loading" | "ready" | "paid" | "error";
+
+const TENANT_ID = "5f018af5-8e61-4c5c-a4f8-aa08edcadcb5";
+
+export default function Exit() {
+  const [ticket, setTicket] = useState("");
+  const [status, setStatus] = useState<ExitStatus>("idle");
+
+  const [session, setSession] = useState<any>(null);
+  const [amount, setAmount] = useState<number | null>(null);
+
+  // 💳 metodo pagamento
+  const [method, setMethod] = useState<PaymentMethod>("cash");
+
+  const ticketNumber = useMemo(
+    () => Number(ticket),
+    [ticket]
+  );
+
+  /* ======================================================
+     🔍 CERCA SESSIONE APERTA PER TICKET
+     ====================================================== */
+  const handleLookup = async () => {
+    if (!Number.isInteger(ticketNumber)) return;
+
+    setStatus("loading");
+
+    try {
+      const openSession = await fetchOpenSessionByTicket(
+        TENANT_ID,
+        ticketNumber
+      );
+
+      if (!openSession) {
+        setStatus("error");
+        return;
+      }
+
+      setSession(openSession);
+
+      // 💰 CALCOLO IMPORTO REALE
+      const calculated = await calculateParkingAmount({
+        tenantId: TENANT_ID,
+        session: openSession,
+        exitTime: new Date(),
+      });
+
+      setAmount(calculated.finalAmount);
+      setStatus("ready");
+    } catch (e) {
+      console.error(e);
+      setStatus("error");
+    }
+  };
+
+  /* ======================================================
+     💳 PAGAMENTO + CHIUSURA SESSIONE
+     ====================================================== */
+  const handlePayment = async () => {
+    if (!session || amount === null) return;
+
+    try {
+      // 1️⃣ REGISTRA PAGAMENTO
+      await createPayment({
+        tenantId: TENANT_ID,
+        sessionId: session.id,
+        amount,
+        method,
+      });
+
+      // 2️⃣ CHIUDI SESSIONE
+      await closeParkingSession({
+        sessionId: session.id,
+        finalAmount: amount,
+      });
+
+      setStatus("paid");
+    } catch (e) {
+      console.error(e);
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="exit-container">
+      <div className="exit-box">
+        <h2>🚗 USCITA VEICOLO</h2>
+
+        {/* INPUT TICKET */}
+        <div className="form-field">
+          <label>🎫 Numero ticket</label>
+          <input
+            value={ticket}
+            onChange={(e) => setTicket(e.target.value)}
+            placeholder="Inserisci numero ticket (0–199)"
+            inputMode="numeric"
+          />
+        </div>
+
+        <button className="btn primary" onClick={handleLookup}>
+          🔍 Calcola importo
+        </button>
+
+        {/* RISULTATO */}
+        {status === "ready" && (
+          <div className="exit-summary">
+            <p>
+              ⏱️ Ingresso:{" "}
+              {new Date(session.entry_time).toLocaleString("it-IT")}
+            </p>
+            <p>
+              ⏱️ Uscita: {new Date().toLocaleString("it-IT")}
+            </p>
+            <p>
+              💰 Importo da pagare:{" "}
+              <strong>€ {amount?.toFixed(2)}</strong>
+            </p>
+
+            {/* 💳 METODO PAGAMENTO */}
+            <div className="payment-methods">
+              <label>
+                <input
+                  type="radio"
+                  checked={method === "cash"}
+                  onChange={() => setMethod("cash")}
+                />
+                💵 Contanti
+              </label>
+
+              <label>
+                <input
+                  type="radio"
+                  checked={method === "pos"}
+                  onChange={() => setMethod("pos")}
+                />
+                💳 POS
+              </label>
+            </div>
+
+            <button className="btn success" onClick={handlePayment}>
+              💳 Conferma pagamento
+            </button>
+          </div>
+        )}
+
+        {status === "paid" && (
+          <div className="exit-success">
+            ✅ Pagamento registrato
+            <br />
+            🚦 Barriera aperta
+          </div>
+        )}
+
+        {status === "error" && (
+          <div className="exit-error">
+            ❌ Ticket non valido o sessione non trovata
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ingresso/index.tsx  
+
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import "@/styles/ingresso.css";
+
+import ClientRecognitionBar from "@/components/ingress/ClientRecognitionBar";
+import { lookupCustomerByPlate } from "@/services/customerLookupService";
+import type { CustomerLookupResult } from "@/services/customerLookupService";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+
+import { fetchVehicleProfileByPlate } from "@/services/vehicleProfileService";
+import type { VehicleProfileByPlate } from "@/types/vehicleProfile";
+
+import {
+  searchVehicleModels,
+  type VehicleModelSearchResult,
+} from "@/services/vehicleModelSearchService";
+
+import { createParkingSession } from "@/services/parkingSessionService";
+
+function nowLabel() {
+  const d = new Date();
+  return {
+    time: d.toLocaleTimeString("it-IT"),
+    date: d.toLocaleDateString("it-IT"),
+  };
+}
+
+const TENANT_ID = "5f018af5-8e61-4c5c-a4f8-aa08edcadcb5";
+
+export default function Ingresso() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  /* ===============================
+     TARGA DALLA DASHBOARD
+     =============================== */
+  const initialPlate = location.state?.plate ?? "";
+  const [plate] = useState(() => initialPlate);
+  const plateDebounced = useDebouncedValue(plate, 400);
+
+  const plateUpper = useMemo(
+    () => plate.replace(/\s+/g, "").toUpperCase(),
+    [plate]
+  );
+
+  /* ===============================
+     STATO CLIENTE
+     =============================== */
+  const [lookup, setLookup] = useState<CustomerLookupResult>({
+    status: "idle",
+  });
+
+  /* ===============================
+     PROFILO VEICOLO (SE ESISTE)
+     =============================== */
+  const [vehicleProfile, setVehicleProfile] =
+    useState<VehicleProfileByPlate | null>(null);
+
+  /* ===============================
+     AUTOCOMPLETE MODELLI
+     =============================== */
+  const [modelInput, setModelInput] = useState("");
+  const [modelResults, setModelResults] = useState<
+    VehicleModelSearchResult[]
+  >([]);
+  const [selectedModel, setSelectedModel] =
+    useState<VehicleModelSearchResult | null>(null);
+
+  /* ===============================
+     CLOCK HEADER
+     =============================== */
+  const [clock, setClock] = useState(() => nowLabel());
+  useEffect(() => {
+    const t = setInterval(() => setClock(nowLabel()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  /* ===============================
+     LOOKUP CLIENTE / ABBONAMENTO
+     =============================== */
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      if (plateDebounced.length < 5) {
+        setLookup({ status: "idle" });
+        return;
+      }
+
+      setLookup({ status: "loading" });
+      const res = await lookupCustomerByPlate(plateUpper);
+      if (!active) return;
+      setLookup(res);
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [plateDebounced, plateUpper]);
+
+  /* ===============================
+     LOOKUP PROFILO VEICOLO
+     =============================== */
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      if (plateUpper.length < 5) {
+        setVehicleProfile(null);
+        return;
+      }
+
+      const profile = await fetchVehicleProfileByPlate(
+        plateUpper,
+        TENANT_ID
+      );
+
+      if (!active) return;
+
+      setVehicleProfile(profile);
+      if (profile) {
+        setSelectedModel(null);
+        setModelInput("");
+        setModelResults([]);
+      }
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [plateUpper]);
+
+  /* ===============================
+     AUTOCOMPLETE MODELLI (NUOVO VEICOLO)
+     =============================== */
+  useEffect(() => {
+    if (vehicleProfile) return;
+    if (modelInput.length < 2) {
+      setModelResults([]);
+      return;
+    }
+
+    const run = async () => {
+      const res = await searchVehicleModels(
+        modelInput,
+        TENANT_ID,
+        10
+      );
+      setModelResults(res);
+    };
+
+    run();
+  }, [modelInput, vehicleProfile]);
+
+  /* ===============================
+     CREA SESSIONE + STAMPA TICKET
+     =============================== */
+  const handlePrintTicket = async () => {
+    const categoryId =
+      vehicleProfile?.category?.id ?? selectedModel?.category_id;
+
+    if (!categoryId) {
+      alert("Categoria veicolo mancante");
+      return;
+    }
+
+    try {
+      await createParkingSession({
+        tenantId: TENANT_ID,
+        categoryId,
+        vehicleProfileId: vehicleProfile?.id ?? null,
+        modelId: selectedModel?.model_id ?? null,
+        subscriptionId: lookup.subscription?.id ?? null,
+        conventionId: lookup.convention?.id ?? null,
+        ticketNumber: null, // Il sistema genera automaticamente il numero ticket
+      });
+
+      navigate("/");
+    } catch (err) {
+      console.error(err);
+      alert("Errore durante la creazione del ticket");
+    }
+  };
+
+  /* ===============================
+     RENDER
+     =============================== */
+  return (
+    <div className="ingresso-container">
+      <div className="ingresso">
+        <header className="ingresso-header">
+          <div className="header-left">
+            🕐 ENTRATA: <strong>{clock.time}</strong> {clock.date}
+          </div>
+          <div className="header-center">
+            🎯 REGISTRAZIONE INGRESSO – NUOVA SOSTA
+          </div>
+          <div className="header-right">⏱ USCITA: --:--:--</div>
+        </header>
+
+        <ClientRecognitionBar result={lookup} />
+
+        <main className="ingresso-grid">
+          {/* ================= DATI VEICOLO ================= */}
+          <section className="grid-box">
+            <h3>🚗 Dati veicolo</h3>
+
+            <div className="form-field">
+              <label>📍 Targa</label>
+              <input value={plateUpper} readOnly className="readonly" />
+            </div>
+
+            <div className="form-field">
+              <label>🚗 Modello</label>
+              <input
+                value={
+                  vehicleProfile
+                    ? vehicleProfile.model?.name ?? ""
+                    : selectedModel?.model_name ?? modelInput
+                }
+                onChange={(e) => setModelInput(e.target.value)}
+                disabled={!!vehicleProfile}
+                placeholder="Inizia a digitare il modello"
+              />
+
+              {!vehicleProfile && modelResults.length > 0 && (
+                <div className="autocomplete">
+                  {modelResults.map((m) => (
+                    <div
+                      key={m.model_id}
+                      className="autocomplete-item"
+                      onClick={() => {
+                        setSelectedModel(m);
+                        setModelInput(m.model_name);
+                        setModelResults([]);
+                      }}
+                    >
+                      {m.model_name} — {m.brand_name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="form-field">
+              <label>🏭 Marca</label>
+              <input
+                value={
+                  vehicleProfile
+                    ? vehicleProfile.brand?.name ?? ""
+                    : selectedModel?.brand_name ?? ""
+                }
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>📊 Categoria</label>
+              <input
+                value={
+                  vehicleProfile
+                    ? vehicleProfile.category?.name ?? ""
+                    : selectedModel?.category_name ?? ""
+                }
+                disabled
+              />
+            </div>
+
+            <div className="form-field">
+              <label>💰 Tariffa</label>
+              <input value="Calcolo in uscita" disabled />
+            </div>
+          </section>
+
+          {/* ================= FOTO ================= */}
+          <section className="grid-box">
+            <h3>📸 Foto</h3>
+            <div className="photo-placeholder">📷 Foto veicolo</div>
+          </section>
+
+          {/* ================= AZIONI ================= */}
+          <section className="grid-box">
+            <h3>⚙️ Azioni</h3>
+
+            <button className="btn cancel" onClick={() => navigate(-1)}>
+              ❌ Annulla
+            </button>
+
+            <button
+              className="btn primary"
+              onClick={handlePrintTicket}
+            >
+              🎫 Stampa ticket ingresso
+            </button>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+superadminlayout.tsx  
+
+
+import { NavLink, Outlet } from "react-router-dom";
+import "@/styles/superadmin.css";
+
+export default function SuperAdminLayout() {
+  return (
+    <div className="superadmin-container">
+      {/* SIDEBAR */}
+      <aside className="superadmin-sidebar">
+        <h2 className="superadmin-title">Super Admin</h2>
+
+        <nav className="superadmin-nav">
+          <NavLink
+            to="/super"
+            end
+            className={({ isActive }) =>
+              isActive ? "sa-link active" : "sa-link"
+            }
+          >
+            🧭 Dashboard
+          </NavLink>
+
+          <NavLink
+            to="/super/tenants"
+            className={({ isActive }) =>
+              isActive ? "sa-link active" : "sa-link"
+            }
+          >
+            🏢 Tenants
+          </NavLink>
+        </nav>
+      </aside>
+
+      {/* CONTENT */}
+      <main className="superadmin-content">
+        <Outlet />
+      </main>
+    </div>
+  );
+}

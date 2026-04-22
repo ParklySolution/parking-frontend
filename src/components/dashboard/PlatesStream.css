@@ -1,0 +1,96 @@
+/* =========================
+   TARGHE LIVE
+   ========================= */
+
+.plates-stream {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.plates-stream h3 {
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 6px;
+  color: #e2e8f0;
+}
+
+/* LISTA */
+.plates-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ITEM */
+.plate-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: #1e293b;
+  border-left: 4px solid transparent;
+  animation: slideIn 0.35s ease;
+  transition: all 0.2s ease;
+}
+
+.plate-item:hover {
+  transform: translateX(3px);
+  background: #334155;
+}
+
+/* TESTO */
+.plate-text {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.plate-message {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+/* STATI */
+.plate-item.allowed {
+  border-left-color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.plate-item.blocked {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+/* ULTIMA TARGA (highlight) */
+.plate-item.latest {
+  box-shadow: 0 0 0 1px #38bdf8, 0 0 15px rgba(56, 189, 248, 0.4);
+}
+
+/* ANIMAZIONE */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* SCROLL */
+.plates-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.plates-list::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
