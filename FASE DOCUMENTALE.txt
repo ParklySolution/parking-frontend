@@ -1,0 +1,267 @@
+
+
+
+📘 DOCUMENTO UFFICIALE — Architettura Multi‑Company / Multi‑Tenant
+📌 1. Obiettivo del nuovo sistema
+Il nuovo modello dati introduce una struttura multi‑company → multi‑tenant → multi‑ruolo, progettata per:
+
+gestire più aziende (company)
+
+ognuna con più tenant (punti vendita, sedi, filiali, ecc.)
+
+utenti con ruoli diversi
+
+accessi granulari ai tenant
+
+onboarding pulito e scalabile
+
+pannelli separati (Super Admin, Company Owner, Tenant Admin, ecc.)
+
+Il sistema precedente era single‑tenant e non supportava questa complessità.
+
+🧩 2. Mappa dei ruoli (chi è chi)
+Ruolo	Livello	Permessi principali
+super_admin	globale	Gestisce tutte le company, tutti i tenant, tutti gli utenti
+company_owner	company	Gestisce la propria company e tutti i tenant associati
+tenant_admin	tenant	Gestisce un singolo tenant (utenti, listini, configurazioni)
+manager	tenant	Gestisce operatività del tenant (ordini, turni, ecc.)
+operator	tenant	Accesso operativo limitato
+
+Gerarchia:
+Codice
+super_admin
+   ↓
+company_owner
+   ↓
+tenant_admin
+   ↓
+manager
+   ↓
+operator
+🏛 3. Mappa delle entità (tabelle) e relazioni
+3.1 Le 4 tabelle nuove (core del nuovo sistema)
+🟦 company_profiles
+Rappresenta una azienda.
+
+Una company può avere N tenants
+
+Una company può avere N utenti (company_owner, manager, ecc.)
+
+🟦 admin_tenants
+Rappresenta un tenant (punto vendita, sede, filiale).
+
+Ogni tenant appartiene a una sola company
+
+Ogni tenant può avere N utenti tramite admin_tenant_access
+
+🟦 admin_profiles
+Rappresenta un utente del sistema.
+
+Ogni utente appartiene a una company
+
+Ogni utente può accedere a uno o più tenant
+
+🟦 admin_tenant_access
+Tabella pivot utente ↔ tenant.
+
+Definisce quali tenant un utente può gestire
+
+Definisce il ruolo dell’utente in quel tenant
+
+Supporta accesso multi‑tenant
+
+3.2 Relazioni (diagramma logico)
+Codice
+company_profiles (1) ────< (N) admin_tenants
+       │                         │
+       │                         └───< admin_tenant_access >─── admin_profiles (N)
+       │
+       └───< (N) admin_profiles
+In parole semplici:
+
+Una company ha più tenant
+
+Una company ha più utenti
+
+Un utente può accedere a più tenant
+
+Un tenant può avere più utenti
+
+🔄 4. Flussi operativi del nuovo sistema
+4.1 Creazione di una nuova company
+Super Admin crea company_profiles
+
+Super Admin crea admin_profiles (company_owner)
+
+Super Admin crea uno o più admin_tenants
+
+Super Admin collega owner ↔ tenant tramite admin_tenant_access
+
+4.2 Login
+L’utente effettua login tramite Supabase Auth
+
+Recuperiamo admin_profiles tramite auth_user_id
+
+Leggiamo il ruolo
+
+Se necessario, leggiamo i tenant associati tramite admin_tenant_access
+
+Routing:
+
+Ruolo	Destinazione
+super_admin	Super Admin Panel
+company_owner	Company Panel
+tenant_admin	Tenant Panel
+manager	Tenant Panel
+operator	Tenant Panel
+
+4.3 Accesso ai tenant
+Quando un utente accede a un tenant:
+
+verifichiamo che esista una riga in admin_tenant_access
+
+verifichiamo che is_active = true
+
+verifichiamo che il ruolo sia compatibile
+
+4.4 Gestione utenti
+Super Admin crea utenti per qualsiasi company
+
+Company Owner crea utenti per la propria company
+
+Tenant Admin crea utenti per il proprio tenant
+
+🛡 5. RLS (Row Level Security) — logica generale
+super_admin
+accesso totale
+
+company_owner
+può vedere:
+
+la propria company
+
+i propri tenant
+
+i propri utenti
+
+tenant_admin / manager / operator
+può vedere solo:
+
+i tenant collegati in admin_tenant_access
+
+gli utenti collegati allo stesso tenant
+
+🗂 6. Come vengono usate le nuove tabelle (per pannello)
+6.1 Super Admin Panel
+Usa:
+
+company_profiles
+
+admin_tenants
+
+admin_profiles
+
+admin_tenant_access
+
+Funzioni:
+
+creare company
+
+creare tenant
+
+creare utenti
+
+assegnare utenti ai tenant
+
+vedere KPI globali
+
+6.2 Company Owner Panel
+Usa:
+
+company_profiles
+
+admin_tenants
+
+admin_profiles
+
+admin_tenant_access
+
+Funzioni:
+
+gestire la propria company
+
+creare tenant
+
+creare utenti
+
+assegnare utenti ai tenant
+
+6.3 Tenant Panel
+Usa:
+
+admin_tenants
+
+admin_profiles
+
+admin_tenant_access
+
+Funzioni:
+
+gestione operativa del tenant
+
+gestione utenti del tenant
+
+gestione listini, ordini, ecc.
+
+🧹 7. Migrazione dal vecchio sistema
+Tabelle vecchie ancora presenti:
+tenants
+
+user_tenants
+
+tenant_company_info
+
+Migrazione prevista:
+tenant_company_info → company_profiles
+
+tenants → admin_tenants
+
+profiles → admin_profiles
+
+user_tenants → admin_tenant_access
+
+Quando eliminare le tabelle vecchie?
+Solo quando:
+
+login aggiornato
+
+pannelli aggiornati
+
+RPC aggiornate
+
+RLS aggiornate
+
+migrazione completata
+
+🧭 8. Roadmap di sviluppo (chiara e sequenziale)
+Schema nuovo completato ✔
+
+Documento ruoli & flussi (questo) ✔
+
+Riscrittura Super Admin Service
+
+Riscrittura Login
+
+Riscrittura pannelli
+
+Creazione nuove RPC
+
+Creazione nuove RLS
+
+Migrazione dati
+
+Eliminazione tabelle vecchie
+
+Test end‑to‑end
+
+Deploy

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { supabase } from "../config/supabase.js";  // ← CAMBIA DA services A config
+import { supabase } from "../config/supabase.js";
 
 export async function createTenantAdminController(req: Request, res: Response) {
   try {
@@ -30,9 +30,9 @@ export async function createTenantAdminController(req: Request, res: Response) {
       });
     }
 
-    // 1. Verifica che il tenant esista
+    // 1. Verifica che il tenant esista (usa admin_tenants)
     const { data: tenant, error: tenantError } = await supabase
-      .from("tenants")
+      .from("admin_tenants")
       .select("id, name, company_id")
       .eq("id", tenantId)
       .single();
@@ -44,6 +44,8 @@ export async function createTenantAdminController(req: Request, res: Response) {
         error: "Tenant non trovato"
       });
     }
+
+    console.log("✅ Tenant trovato:", tenant.id, tenant.name);
 
     // 2. Genera password temporanea
     const tempPassword = Math.random().toString(36).slice(-12) + "!Aa1";
@@ -75,17 +77,22 @@ export async function createTenantAdminController(req: Request, res: Response) {
 
     console.log("✅ Utente auth creato:", authUser.user.id);
 
-    // 4. Crea profilo
+    // 4. Dividi il nome completo in nome e cognome
+    const nameParts = full_name.trim().split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // 5. Crea profilo in admin_profiles con le colonne corrette
     const { error: profileError } = await supabase
-      .from("user_profiles")
+      .from("admin_profiles")
       .insert({
-        id: authUser.user.id,
+        auth_user_id: authUser.user.id,  // ← Collega all'utente auth
         email: email,
-        full_name: full_name,
+        first_name: firstName,
+        last_name: lastName,
         role: "tenant_admin",
-        tenant_id: tenantId,
-        company_id: tenant.company_id,
-        is_active: true
+        company_id: tenant.company_id
+        // NOTA: tenant_id e is_active NON esistono in questa tabella
       });
 
     if (profileError) {
@@ -95,9 +102,9 @@ export async function createTenantAdminController(req: Request, res: Response) {
       throw profileError;
     }
 
-    console.log("✅ Profilo creato");
+    console.log("✅ Profilo creato in admin_profiles");
 
-    // 5. Risposta di successo
+    // 6. Risposta di successo
     return res.status(201).json({
       success: true,
       message: "Tenant admin creato con successo",

@@ -513,6 +513,9 @@ export async function getCompanies() {
 // TENANT ADMIN MANAGEMENT — VERSIONE SICURA (STRADA A)
 // ============================================================================
 
+// 🔥 Configurazione API_URL (usa la variabile d'ambiente se disponibile)
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
 export async function createTenantAdmin(
   tenantId: string,
   { full_name, email }: { full_name: string; email: string }
@@ -534,21 +537,21 @@ export async function createTenantAdmin(
     console.log("🔑 TOKEN:", accessToken);
     console.log("🚀 STO PER CHIAMARE IL BACKEND…");
 
-    // 2️⃣ Chiamata al backend Node (STRADA A)
-    const res = await fetch(
-      `http://localhost:3001/superadmin/create-tenant-admin/${tenantId}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          full_name,
-          email,
-        }),
-      }
-    );
+    // 2️⃣ URL CORRETTO con /api/ e /tenants/:tenantId/create-tenant-admin
+    const url = `${API_URL}/api/superadmin/tenants/${tenantId}/create-tenant-admin`;
+    console.log("📡 URL chiamata:", url);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        full_name,
+        email,
+      }),
+    });
 
     const data = await res.json();
 

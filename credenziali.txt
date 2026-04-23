@@ -1,0 +1,69 @@
+
+Email USER
+
+
+email user SuperAdmin
+
+E-mail: founder@park-ly.it
+Password: Tombstone78!
+
+User UID: a43fa4e7-f209-4632-b843-ad5e583b7f8c
+
+
+
+
+E-mail user Tenant: Parking Belgio & Oasi Car Wash
+
+Email: garagesolution25@gmail.com
+Password: Liccasarda26!
+
+
+Email user Admin Tenant: Parking Belgio & Oasi Car Wash
+
+Email: germanogianni78@gmail.com
+Password: Fargo2026!
+
+
+Chiavi Varie
+
+
+Anon Pubblic: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsY25jbWxqc2VzdnBtdnB1b3dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDAyMDAsImV4cCI6MjA4NjQ3NjIwMH0.h6HCvcyNDPlN8CSbgr7SaKazJ1DhHPO7Bf6g1y1EqX4
+
+service_role: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsY25jbWxqc2VzdnBtdnB1b3dnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDkwMDIwMCwiZXhwIjoyMDg2NDc2MjAwfQ.BvTgw3Nrsxm1hpXTyJFNTrt1vBpjpw-ks_dDnHu5uzA
+             
+apy_key_resend: re_6MwF9ZJu_JNfhbVyMLF6axRG7BrWp93um
+
+Comandi Vari
+
+{
+  "email": "admin.test@esempio.it",
+  "full_name": "Mario Rossi",
+  "tenant_id": "TNT-001",
+  "performed_by": "e9681dbe-63e4-47c0-a0aa-684e93b22e1d"
+}
+
+
+Deploy function create_tenant_admin: supabase functions deploy create-tenant-admin --use-api
+
+
+
+
+
+schema struttura ruoli 
+
+Super Admin
+
+il suo cliente diretto è l'azienda che deve avere il suo codice id, a questo codice id possono essere abbinati uno o più tenant in quanto l'azienda può avere un solo garage o più garage o magari aggiungere altri garage nel tempo,  questo potrebbe rendere più semplice implementare la logica di accesso ad un sistema con più garage da parte di  un singolo cliente e accedervi da una sola schermata tramite selezione, 
+
+Tenant
+
+il pannello da cui il proprietario di un garage può gestire il suo pannello compreso la creazione di ruoli subalterni quali Admin(manager) e operatori
+
+Admin (manager)
+Pannello dal quale L'Admin(manager) creato dal Tenant può gestire tariffe e categorie e quant'altro
+
+Operatore
+
+il pannello che gestisce l'operatore creato dal tenant per gestire ingressi ed uscite delle soste o rinnovo abbonamentio ed altro
+
+

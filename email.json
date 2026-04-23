@@ -1,0 +1,6 @@
+{
+  "from": "Test <noreply@park-ly.it>",
+  "to": ["garagesolution25@gmail.com"],
+  "subject": "Test email da curl",
+  "html": "<p>Funziona!</p>"
+}
