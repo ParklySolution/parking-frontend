@@ -4,6 +4,7 @@ import { supabase } from "@/services/supabase";
 import { useNavigate } from "react-router-dom";
 import TenantLayout from "./layout/TenantLayout";
 import { FaUsers, FaTicketAlt, FaCar, FaChartLine } from "react-icons/fa";
+import { api } from "@/services/api.service";
 
 /* ======================================================
    STATI E INTERFACCE
@@ -38,7 +39,7 @@ export default function TenantDashboard() {
   const { flags, loading: flagsLoading } = useFeatureFlags(tenantId || "");
 
   /* ======================================================
-     1️⃣ CARICAMENTO COMPANY → TENANTS
+     1️⃣ CARICAMENTO COMPANY → TENANTS (VIA BACKEND)
      ====================================================== */
 
   useEffect(() => {
@@ -52,12 +53,8 @@ export default function TenantDashboard() {
           return;
         }
 
-        // 1️⃣ Recupero il profilo del Company Owner
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("company_id")
-          .eq("id", userId)
-          .single();
+        // 🔥 OTTIENI IL PROFILO DAL BACKEND
+        const { profile } = await api.getProfile(userId);
 
         if (!profile?.company_id) {
           console.error("❌ Nessuna company associata all'utente");
@@ -65,16 +62,19 @@ export default function TenantDashboard() {
           return;
         }
 
-        // 2️⃣ Recupero tutti i garage della company
-        const { data: tenants } = await supabase
-          .from("tenants")
+        // 🔥 RECUPERA I TENANT DA admin_tenants (NON tenants)
+        const { data: tenants, error } = await supabase
+          .from("admin_tenants")
           .select("id, name, address, city")
           .eq("company_id", profile.company_id)
           .order("created_at", { ascending: true });
 
+        if (error) {
+          console.error("❌ Errore caricamento tenants:", error);
+        }
+
         setCompanyTenants(tenants || []);
 
-        // 3️⃣ Se c'è un solo garage → seleziono automaticamente
         if (tenants && tenants.length === 1) {
           setTenantId(tenants[0].id);
           setIsSelectingTenant(false);
@@ -108,7 +108,7 @@ export default function TenantDashboard() {
   }
 
   /* ======================================================
-     3️⃣ SELEZIONE GARAGE (solo se più di uno)
+     3️⃣ SELEZIONE GARAGE
      ====================================================== */
 
   if (isSelectingTenant) {
@@ -160,7 +160,7 @@ export default function TenantDashboard() {
   }
 
   /* ======================================================
-     4️⃣ DASHBOARD DEL GARAGE (come prima)
+     4️⃣ DASHBOARD DEL GARAGE
      ====================================================== */
 
   if (!tenantId) {
@@ -290,7 +290,7 @@ function StatCard({ label, value, icon, trend }: {
 }
 
 /* ======================================================
-   STILI (identici ai tuoi)
+   STILI
    ====================================================== */
 
 const loadingContainer = { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "400px" };

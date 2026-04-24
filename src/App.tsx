@@ -38,6 +38,7 @@ import RequireAdmin from "@/middleware/RequireAdmin";
 ====================================================== */
 import ForgotPassword from "@/pages/Auth/ForgotPassword";
 import ResetPassword from "@/pages/Auth/ResetPassword";
+import UpdatePassword from "@/pages/Auth/UpdatePassword";  // 🔥 AGGIUNTO
 
 /* ======================================================
    SUPER ADMIN PANEL
@@ -175,6 +176,7 @@ function App() {
         <Route path="/create-super-admin" element={<CreateSuperAdmin />} />
         <Route path="/auth/forgot" element={<ForgotPassword />} />
         <Route path="/auth/reset" element={<ResetPassword />} />
+        <Route path="/auth/update-password" element={<UpdatePassword />} />  {/* 🔥 ROTTA AGGIUNTA */}
         <Route path="/accept-invite" element={<AcceptInvite />} />
 
         {/* OPERATORE */}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { exitImpersonation } from "@/services/exitImpersonationService";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/services/supabase";
+import { api } from "@/services/api.service";
 
 export default function TenantHeader() {
   const [tenantName, setTenantName] = useState<string>("");
@@ -19,35 +20,41 @@ export default function TenantHeader() {
   useEffect(() => {
     async function load() {
       try {
-        // Recupera la sessione per capire se siamo in impersonation
         const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData.session;
         
-        // Verifica se è in corso un'impersonation (esiste una flag o metadata specifico)
         const isImpersonatingSession = session?.user?.app_metadata?.impersonated === true;
         setIsImpersonating(isImpersonatingSession);
 
-        // Prima prova a prendere il nome dalla sessione (impersonation)
+        // 🔥 PRIORITÀ 1: Nome dalla sessione (impersonation)
         const sessionName = session?.user?.user_metadata?.tenant_name;
-        
         if (sessionName) {
           setTenantName(sessionName);
           return;
         }
 
-        // Se non c'è nella sessione, cerca nella tabella tenants
-        if (tenantId) {
-          const { data, error } = await supabase
-            .from('tenants')
-            .select('name')
-            .eq('id', tenantId)
-            .single();
+        // 🔥 PRIORITÀ 2: Ottieni tenantId dal profilo via backend
+        if (session?.user?.id) {
+          const { profile } = await api.getProfile(session.user.id);
+          
+          if (profile?.company_id) {
+            // 🔥 CERCA IN admin_tenants (NON tenants)
+            const { data: tenant, error } = await supabase
+              .from("admin_tenants")
+              .select("name")
+              .eq("company_id", profile.company_id)
+              .maybeSingle();
 
-          if (error) {
-            console.error('❌ Errore caricamento tenant name:', error);
-            setTenantName("Tenant");
+            if (error) {
+              console.error('❌ Errore caricamento tenant name:', error);
+              setTenantName("Tenant");
+            } else if (tenant) {
+              setTenantName(tenant.name);
+            } else {
+              setTenantName("Tenant");
+            }
           } else {
-            setTenantName(data?.name ?? "Tenant");
+            setTenantName("Tenant");
           }
         } else {
           setTenantName("Tenant");
@@ -125,7 +132,6 @@ export default function TenantHeader() {
 
       {/* Right side - Actions */}
       <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-        {/* Exit impersonation button - mostrato solo in impersonation */}
         {isImpersonating && (
           <button
             onClick={handleExit}
@@ -157,7 +163,6 @@ export default function TenantHeader() {
           </button>
         )}
 
-        {/* User avatar/placeholder */}
         <div
           style={{
             width: "36px",
