@@ -3,7 +3,8 @@ import {
   createTenantAdminController,
   getUserProfileController,
   getCurrentUserController,
-  impersonateUserController   // 🔥 AGGIUNGI QUESTO IMPORT
+  impersonateUserController,
+  logAuditController  // 🔥 AGGIUNTO PER AUDIT LOG
 } from "../controllers/superadmin.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireSuperAdmin } from "../middleware/role.middleware.js";
@@ -41,7 +42,7 @@ router.get(
 );
 
 // ============================================================================
-// IMPERSONATION 🔥 NUOVA ROUTE - DEVI AGGIUNGERE QUESTO
+// IMPERSONATION
 // ============================================================================
 
 // POST /api/superadmin/impersonate/:userId
@@ -50,6 +51,17 @@ router.post(
   authMiddleware,
   requireSuperAdmin,
   impersonateUserController
+);
+
+// ============================================================================
+// AUDIT LOG
+// ============================================================================
+
+// POST /api/superadmin/audit/log
+router.post(
+  "/audit/log",
+  authMiddleware,
+  logAuditController
 );
 
 export default router;

@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { supabase } from "../config/supabase.js";
 import { Resend } from "resend";
-import jwt from "jsonwebtoken";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -280,10 +279,8 @@ export async function getCurrentUserController(req: Request, res: Response) {
 }
 
 // ============================================================================
-// IMPERSONATION - VERSIONE PROFESSIONALE
+// IMPERSONATION
 // ============================================================================
-// backend/src/controllers/superadmin.controller.ts
-
 export async function impersonateUserController(req: Request, res: Response) {
   try {
     const { userId } = req.params;
@@ -297,7 +294,6 @@ export async function impersonateUserController(req: Request, res: Response) {
       });
     }
 
-    // 1. Trova il tenant e il suo owner_user_id
     const { data: tenant, error: tenantError } = await supabase
       .from("admin_tenants")
       .select("id, name, owner_user_id")
@@ -321,7 +317,6 @@ export async function impersonateUserController(req: Request, res: Response) {
     console.log("✅ Tenant trovato:", tenant.name);
     console.log("✅ owner_user_id:", tenant.owner_user_id);
 
-    // 2. Ottieni i dati dell'utente da impersonare
     const { data: userData, error: userError } = await supabase.auth.admin.getUserById(tenant.owner_user_id);
 
     if (userError || !userData.user) {
@@ -333,7 +328,6 @@ export async function impersonateUserController(req: Request, res: Response) {
 
     console.log("✅ Utente da impersonare:", userData.user.email);
 
-    // 3. Genera un magic link per l'utente
     const frontendUrl = process.env.NODE_ENV === 'production'
       ? 'https://tuo-dominio.com'
       : 'http://localhost:5173';
@@ -374,6 +368,66 @@ export async function impersonateUserController(req: Request, res: Response) {
 
   } catch (err: any) {
     console.error("❌ ERRORE impersonateUserController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Errore interno del server"
+    });
+  }
+}
+
+// ============================================================================
+// AUDIT LOG - REGISTRA AZIONI UTENTI
+// ============================================================================
+export async function logAuditController(req: Request, res: Response) {
+  try {
+    const { action, entity, entity_id, details } = req.body;
+    const user = (req as any).user;
+
+    console.log("📝 [logAuditController] Azione:", action);
+    console.log("📝 [logAuditController] Utente:", user?.id, user?.email);
+
+    if (!action) {
+      return res.status(400).json({
+        success: false,
+        error: "action è richiesto"
+      });
+    }
+
+    if (!entity) {
+      return res.status(400).json({
+        success: false,
+        error: "entity è richiesto"
+      });
+    }
+
+    const { error: insertError } = await supabase
+      .from("audit_log")
+      .insert({
+        action,
+        entity,
+        entity_id: entity_id || null,
+        metadata: details || {},
+        performed_by: user?.id || null,
+        created_at: new Date().toISOString()
+      });
+
+    if (insertError) {
+      console.error("❌ Errore inserimento audit log:", insertError);
+      return res.status(500).json({
+        success: false,
+        error: insertError.message
+      });
+    }
+
+    console.log("✅ Audit log registrato con successo");
+
+    return res.status(200).json({
+      success: true,
+      message: "Audit log registrato"
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE logAuditController:", err);
     return res.status(500).json({
       success: false,
       error: err.message || "Errore interno del server"
