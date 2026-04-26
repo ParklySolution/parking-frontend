@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { supabase } from "../config/supabase.js";
 import { Resend } from "resend";
+import jwt from "jsonwebtoken";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -14,7 +15,6 @@ export async function createTenantAdminController(req: Request, res: Response) {
 
     console.log("📥 createTenantAdminController:", { tenantId, full_name, email });
 
-    // Validazioni
     if (!tenantId) {
       return res.status(400).json({
         success: false,
@@ -36,7 +36,6 @@ export async function createTenantAdminController(req: Request, res: Response) {
       });
     }
 
-    // 1. Verifica che il tenant esista
     const { data: tenant, error: tenantError } = await supabase
       .from("admin_tenants")
       .select("id, name, company_id")
@@ -53,10 +52,8 @@ export async function createTenantAdminController(req: Request, res: Response) {
 
     console.log("✅ Tenant trovato:", tenant.id, tenant.name);
 
-    // 2. Genera password temporanea (fallback)
     const tempPassword = Math.random().toString(36).slice(-12) + "!Aa1";
 
-    // 3. Crea utente in auth
     const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
       email: email,
       password: tempPassword,
@@ -83,12 +80,10 @@ export async function createTenantAdminController(req: Request, res: Response) {
 
     console.log("✅ Utente auth creato:", authUser.user.id);
 
-    // 4. Dividi il nome completo
     const nameParts = full_name.trim().split(' ');
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    // 5. Crea profilo in admin_profiles
     const { error: profileError } = await supabase
       .from("admin_profiles")
       .insert({
@@ -108,7 +103,6 @@ export async function createTenantAdminController(req: Request, res: Response) {
 
     console.log("✅ Profilo creato in admin_profiles");
 
-    // 6. 🔥 GENERA MAGIC LINK PER RESET PASSWORD 🔥
     const frontendUrl = process.env.NODE_ENV === 'production'
       ? 'https://tuo-dominio.com'
       : 'http://localhost:5173';
@@ -132,7 +126,6 @@ export async function createTenantAdminController(req: Request, res: Response) {
       console.warn("⚠️ Magic link non generato, uso fallback:", magicLinkError?.message);
     }
 
-    // 7. 🔥 INVIO EMAIL CON RESEND 🔥
     const { data: emailData, error: emailError } = await resend.emails.send({
       from: "Parkly <no-reply@park-ly.it>",
       to: [email],
@@ -185,7 +178,6 @@ export async function createTenantAdminController(req: Request, res: Response) {
       console.log("✅ Email inviata con Resend! ID:", emailData?.id);
     }
 
-    // 8. Risposta di successo
     return res.status(201).json({
       success: true,
       message: "Tenant admin creato con successo. Email inviata con le credenziali.",
@@ -209,7 +201,7 @@ export async function createTenantAdminController(req: Request, res: Response) {
 }
 
 // ============================================================================
-// GET USER PROFILE (per RequireTenantSession e AdminLogin)
+// GET USER PROFILE
 // ============================================================================
 export async function getUserProfileController(req: Request, res: Response) {
   try {
@@ -248,7 +240,7 @@ export async function getUserProfileController(req: Request, res: Response) {
 }
 
 // ============================================================================
-// GET CURRENT USER (opzionale, utile per debug)
+// GET CURRENT USER
 // ============================================================================
 export async function getCurrentUserController(req: Request, res: Response) {
   try {
@@ -283,6 +275,108 @@ export async function getCurrentUserController(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       error: err.message
+    });
+  }
+}
+
+// ============================================================================
+// IMPERSONATION - VERSIONE PROFESSIONALE
+// ============================================================================
+// backend/src/controllers/superadmin.controller.ts
+
+export async function impersonateUserController(req: Request, res: Response) {
+  try {
+    const { userId } = req.params;
+
+    console.log("🕵️ [impersonateUserController] Richiesta per tenantId:", userId);
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: "userId è richiesto"
+      });
+    }
+
+    // 1. Trova il tenant e il suo owner_user_id
+    const { data: tenant, error: tenantError } = await supabase
+      .from("admin_tenants")
+      .select("id, name, owner_user_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (tenantError || !tenant) {
+      return res.status(404).json({
+        success: false,
+        error: "Tenant non trovato"
+      });
+    }
+
+    if (!tenant.owner_user_id) {
+      return res.status(400).json({
+        success: false,
+        error: "Questo tenant non ha un owner_user_id valido"
+      });
+    }
+
+    console.log("✅ Tenant trovato:", tenant.name);
+    console.log("✅ owner_user_id:", tenant.owner_user_id);
+
+    // 2. Ottieni i dati dell'utente da impersonare
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(tenant.owner_user_id);
+
+    if (userError || !userData.user) {
+      return res.status(404).json({
+        success: false,
+        error: "Utente da impersonare non trovato"
+      });
+    }
+
+    console.log("✅ Utente da impersonare:", userData.user.email);
+
+    // 3. Genera un magic link per l'utente
+    const frontendUrl = process.env.NODE_ENV === 'production'
+      ? 'https://tuo-dominio.com'
+      : 'http://localhost:5173';
+
+    const { data: magicLink, error: magicError } = await supabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email: userData.user.email!,
+      options: {
+        redirectTo: `${frontendUrl}/auth/impersonate-callback?tenant_id=${tenant.id}`
+      }
+    });
+
+    if (magicError) {
+      console.error("❌ Errore generazione magic link:", magicError);
+      return res.status(500).json({
+        success: false,
+        error: magicError.message
+      });
+    }
+
+    const magicLinkUrl = magicLink.properties?.action_link;
+    
+    if (!magicLinkUrl) {
+      return res.status(500).json({
+        success: false,
+        error: "Impossibile generare il magic link"
+      });
+    }
+
+    console.log("✅ Magic link generato:", magicLinkUrl);
+
+    return res.status(200).json({
+      success: true,
+      magic_link: magicLinkUrl,
+      tenant_id: tenant.id,
+      user_email: userData.user.email
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE impersonateUserController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Errore interno del server"
     });
   }
 }

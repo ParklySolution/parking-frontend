@@ -201,65 +201,44 @@ export default function TenantDetailPage() {
      IMPERSONATION
   ============================================================ */
   async function handleImpersonate() {
-    if (!tenantId) return;
+  if (!tenantId) return;
 
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const tenantOwnerUserId = tenant?.owner_user_id;
-      if (!tenantOwnerUserId) {
-        alert("Questo tenant non ha un owner_user_id valido");
-        return;
-      }
+    console.log("🔥 handleImpersonate → tenantId:", tenantId);
 
-      const { data: currentSessionData } = await supabase.auth.getSession();
-      const originalAccess = currentSessionData?.session?.access_token;
-      const originalRefresh = currentSessionData?.session?.refresh_token;
+    const result = await impersonateTenant(tenantId);
 
-      if (!originalAccess || !originalRefresh) {
-        alert("Impossibile recuperare la sessione originale del SuperAdmin");
-        return;
-      }
-
-      localStorage.setItem(
-        "superadmin_original_session",
-        JSON.stringify({
-          access_token: originalAccess,
-          refresh_token: originalRefresh,
-        })
-      );
-
-      localStorage.setItem("is_impersonating", "true");
-      localStorage.setItem("impersonated_tenant_name", tenant.name);
-
-      console.log("🔥 handleImpersonate → impersonating:", tenantOwnerUserId);
-
-      const session = await impersonateTenant(tenantOwnerUserId);
-
-      if (!session?.access_token || !session?.refresh_token) {
-        alert("Impossibile impersonare il tenant");
-        return;
-      }
-
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-      });
-
-      if (sessionError) {
-        console.error("Errore setSession:", sessionError);
-        alert("Errore durante il login impersonato");
-        return;
-      }
-
-      navigate(`/tenant/${tenantId}/dashboard`);
-    } catch (err) {
-      console.error("Errore impersonation:", err);
-      alert("Errore durante l'impersonazione");
-    } finally {
-      setLoading(false);
+    if (!result?.success || !result?.magic_link) {
+      alert("Impossibile ottenere il link di impersonation");
+      return;
     }
+
+    console.log("✅ Magic link ricevuto:", result.magic_link);
+
+    // Salva la sessione originale per poter uscire dopo
+    const { data: { session: originalSession } } = await supabase.auth.getSession();
+    localStorage.setItem("superadmin_original_session", JSON.stringify({
+      access_token: originalSession?.access_token,
+      refresh_token: originalSession?.refresh_token,
+    }));
+    localStorage.setItem("is_impersonating", "true");
+    
+    // 🔥 SALVA SIA tenantId CHE tenantName (dinamico)
+    localStorage.setItem("impersonated_tenant_id", tenantId);
+    localStorage.setItem("impersonated_tenant_name", tenant?.tenant_name || tenant?.name || "Caricamento...");
+
+    // 🔥 REDIRECT AL MAGIC LINK DI SUPABASE
+    window.location.href = result.magic_link;
+    
+  } catch (err) {
+    console.error("Errore impersonation:", err);
+    alert("Errore durante l'impersonazione");
+  } finally {
+    setLoading(false);
   }
+}
 
   /* ============================================================
      CREA TENANT ADMIN

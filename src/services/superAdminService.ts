@@ -568,29 +568,35 @@ export async function createTenantAdmin(
   }
 }
 
-// ============================================================================
-// IMPERSONATION (VERSIONE CORRETTA PER EDGE FUNCTIONS V2)
-// ============================================================================
+export async function impersonateTenant(tenantId: string) {
+  console.log("🕵️ [SERVICE] impersonateTenant → chiamata backend:", tenantId);
 
-export async function impersonateTenant(userIdToImpersonate: string) {
-  console.log("🕵️ [SERVICE] impersonateTenant → impersonating:", userIdToImpersonate);
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
 
-  const { data, error } = await supabase.functions.invoke(
-    "generate-impersonation-token",
-    {
-      body: {
-        user_id_to_impersonate: userIdToImpersonate,
-      },
-      headers: {
-        "X-Client-Info": "supabase-js-edge",
-      },
+    if (!token) {
+      console.error("❌ Nessun token disponibile");
+      return null;
     }
-  );
 
-  if (error) {
-    console.error("❌ impersonateTenant ERROR:", error);
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+    const response = await fetch(`${API_URL}/api/superadmin/impersonate/${tenantId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+    console.log("✅ Risposta backend:", data);
+    
+    return data;
+
+  } catch (err) {
+    console.error("❌ Eccezione impersonateTenant:", err);
     return null;
   }
-
-  return data?.session ?? null;
 }

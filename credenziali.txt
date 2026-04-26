@@ -1,3 +1,19 @@
+git config --global user.name "Gianni"
+git config --global user.email "germanogianni78@gmail.com"
+git commit -m "Feat: creazione tenant admin funzionante con profilo admin_profiles"
+
+
+
+
+per terminare il backend:  taskkill /F /IM node.exe
+
+
+
+
+
+
+
+
 
 Email USER
 
@@ -66,95 +82,4 @@ Operatore
 
 il pannello che gestisce l'operatore creato dal tenant per gestire ingressi ed uscite delle soste o rinnovo abbonamentio ed altro
 
-
-
-
-
-ANALISI DELLA STRUTTURA
-text
-parking-frontend/
-├── backend/                    # ✅ Backend Node (iniziato ma incompleto)
-│   ├── src/
-│   │   ├── config/supabase.ts
-│   │   ├── controllers/superadmin.controller.ts
-│   │   ├── middleware/
-│   │   ├── routes/superadmin.routes.ts
-│   │   └── server.ts
-│   └── package.json
-│
-├── src/                        # ✅ Frontend React
-│   ├── pages/
-│   │   ├── SuperAdmin/        # ✅ Gestione tenant
-│   │   ├── Tenant/            # ✅ Pannello tenant
-│   │   └── Admin/             # ✅ Pannello admin
-│   └── services/
-│       └── superAdminService.ts  # ⚠️ Chiamate miste (Supabase + backend Node)
-│
-└── supabase/                   # ⚠️ Edge Functions (DA MIGRARE)
-    └── functions/
-        ├── generate-impersonation-token/
-        ├── create-tenant-admin/      # ❌ DA SOSTITUIRE
-        ├── update-admin/             # ❌ DA MIGRARE
-        ├── create-operator/          # ❌ DA MIGRARE
-        ├── send-contract-email/      # ❌ DA MIGRARE
-        ├── log-audit/                # ❌ DA MIGRARE
-        └── ...
-🗺️ PIANO DI MIGRAZIONE COMPLETO
-FASE 1: COMPLETARE IL BACKEND NODE (GIÀ IN CORSO)
-Endpoint	Stato	Priorità
-POST /tenants/:id/create-tenant-admin	✅ COMPLETATO	Alta
-GET /profile/:userId	✅ DA AGGIUNGERE	Alta
-GET /me	✅ DA AGGIUNGERE	Alta
-POST /auth/login	⚠️ Gestito da Supabase	Media
-POST /auth/logout	⚠️ Gestito da Supabase	Media
-FASE 2: MIGRARE LE EDGE FUNCTIONS
-Edge Function	Destinazione Backend
-generate-impersonation-token	POST /impersonate
-update-admin	PUT /admins/:id
-create-operator	POST /operators
-send-contract-email	POST /contracts/send-email
-log-audit	POST /audit/log
-FASE 3: CENTRALIZZARE LE CHIAMATE API
-typescript
-// Struttura finale dei servizi frontend
-frontend/src/services/
-├── api/client.ts        # Client HTTP centralizzato
-├── api/auth.ts          # Login, logout, me
-├── api/tenants.ts       # CRUD tenant
-├── api/admins.ts        # Gestione admin
-├── api/audit.ts         # Audit log
-└── api/contracts.ts     # Contratti email
-📋 RIEPILOGO STATO ATTUALE E PROSSIMI PASSI
-Modulo	Stato	Azione
-Creazione Tenant Admin	🟢 FUNZIONANTE	✅ Completo
-Invio email con Resend	🟢 FUNZIONANTE	✅ Completo
-Reindirizzamento login	🟡 PARZIALE	Fixare la pagina reset password
-Middleware auth	🟡 PARZIALE	Completare RequireTenantSession
-Edge Functions	🔴 DA MIGRARE	8 funzioni da convertire
-🎯 PROSSIMO PASSO
-Ora che la creazione del tenant admin funziona completamente, il prossimo passo logico è:
-
-Completare il middleware (RequireTenantSession e AdminLogin)
-
-Fixare la pagina di reset password e il reindirizzamento
-
-Migrare la prossima edge function (suggerisco generate-impersonation-token)
-
-
-
-Migrazione Edge Functions
-Edge Function da migrare	Priorità
-generate-impersonation-token	Alta (per impersonation)
-log-audit	Alta (per audit log)
-update-admin	Media
-send-contract-email	Media
-create-operator	Bassa
-FASE 3: Ottimizzazioni
-Aggiungere loading states "premium"
-
-Migliorare la UI delle pagine di auth
-
-Aggiungere notifiche toast
-
-Implementare logout button
 

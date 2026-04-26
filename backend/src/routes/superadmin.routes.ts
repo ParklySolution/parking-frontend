@@ -2,7 +2,8 @@ import { Router } from "express";
 import { 
   createTenantAdminController,
   getUserProfileController,
-  getCurrentUserController
+  getCurrentUserController,
+  impersonateUserController   // 🔥 AGGIUNGI QUESTO IMPORT
 } from "../controllers/superadmin.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireSuperAdmin } from "../middleware/role.middleware.js";
@@ -37,6 +38,18 @@ router.get(
   "/me",
   authMiddleware,
   getCurrentUserController
+);
+
+// ============================================================================
+// IMPERSONATION 🔥 NUOVA ROUTE - DEVI AGGIUNGERE QUESTO
+// ============================================================================
+
+// POST /api/superadmin/impersonate/:userId
+router.post(
+  "/impersonate/:userId",
+  authMiddleware,
+  requireSuperAdmin,
+  impersonateUserController
 );
 
 export default router;

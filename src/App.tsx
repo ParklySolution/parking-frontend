@@ -68,6 +68,7 @@ import CreateTenantFromCompany from "@/pages/SuperAdmin/CreateTenantFromCompany"
 ====================================================== */
 import RequireTenantSession from "@/middleware/RequireTenantSession";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import ImpersonateCallback from "@/pages/Auth/ImpersonateCallback";
 
 import TenantDashboard from "@/pages/Tenant/Dashboard";
 import TenantIngressi from "@/pages/Tenant/Ingressi";
@@ -449,6 +450,8 @@ function App() {
             </RequireTenantSession>
           }
         />
+
+        <Route path="/auth/impersonate-callback" element={<ImpersonateCallback />} />
 
         {/* FALLBACK */}
         <Route path="*" element={<Navigate to="/" replace />} />
