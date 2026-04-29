@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { supabase } from "@/services/supabase";
 import {
   fetchVehicleBrands,
   toggleVehicleBrand,
@@ -10,25 +11,80 @@ import type { VehicleBrand } from "@/services/vehicleBrandsAdminService";
 import BrandModal from "./components/BrandModal";
 
 function TenantBrands() {
-  const { tenantId } = useParams<{ tenantId: string }>();
+  const { tenantId: urlTenantId } = useParams<{ tenantId: string }>();
+  const navigate = useNavigate();
+  const [realTenantId, setRealTenantId] = useState<string | null>(null);
   const [brands, setBrands] = useState<VehicleBrand[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(true);
 
   const BLUE = "#3B82F6";
 
+  // Risolve il tenant ID
+  useEffect(() => {
+    async function resolveTenantId() {
+      try {
+        console.log("🔍 TenantBrands - URL tenantId:", urlTenantId);
+
+        if (!urlTenantId) {
+          setError("Tenant ID non trovato nell'URL");
+          setResolving(false);
+          return;
+        }
+
+        const { data: tenant } = await supabase
+          .from("admin_tenants")
+          .select("id")
+          .eq("id", urlTenantId)
+          .maybeSingle();
+
+        if (tenant) {
+          setRealTenantId(urlTenantId);
+          setResolving(false);
+          return;
+        }
+
+        const { data: companyTenant } = await supabase
+          .from("admin_tenants")
+          .select("id")
+          .eq("company_id", urlTenantId)
+          .maybeSingle();
+
+        if (companyTenant) {
+          setRealTenantId(companyTenant.id);
+          setResolving(false);
+          return;
+        }
+
+        setError("Tenant non trovato");
+      } catch (err) {
+        console.error("❌ Errore risoluzione tenant:", err);
+        setError("Errore durante la risoluzione del tenant");
+      } finally {
+        setResolving(false);
+      }
+    }
+
+    resolveTenantId();
+  }, [urlTenantId]);
+
+  // Carica le marche
   const load = async () => {
-    if (!tenantId) {
-      setError("Tenant ID non trovato");
+    if (!realTenantId) {
+      setError("Tenant ID non valido");
       setLoading(false);
       return;
     }
 
+    console.log("🔍 TenantBrands - Caricamento marche per tenantId:", realTenantId);
+
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchVehicleBrands(tenantId);
+      const data = await fetchVehicleBrands(realTenantId);
+      console.log(`✅ Trovate ${data.length} marche`);
       setBrands(data);
     } catch (err) {
       console.error("Errore caricamento marche:", err);
@@ -39,21 +95,16 @@ function TenantBrands() {
   };
 
   useEffect(() => {
-    load();
-  }, [tenantId]);
+    if (realTenantId) {
+      load();
+    }
+  }, [realTenantId]);
 
-  if (!tenantId) {
+  if (resolving) {
     return (
-      <div style={{ color: "#ff4444", padding: "24px" }}>
-        Errore: Tenant ID non presente nell'URL
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div style={{ color: "#9ca3af", padding: "24px", textAlign: "center" }}>
-        Caricamento marche...
+      <div style={{ padding: "24px", textAlign: "center" }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p style={{ color: "#9ca3af", marginTop: "16px" }}>Caricamento tenant...</p>
       </div>
     );
   }
@@ -66,8 +117,54 @@ function TenantBrands() {
     );
   }
 
+  if (!realTenantId) {
+    return (
+      <div style={{ color: "#ff4444", padding: "24px" }}>
+        Errore: Tenant ID non valido
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ color: "#9ca3af", padding: "24px", textAlign: "center" }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p style={{ marginTop: "16px" }}>Caricamento marche...</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: "24px", color: "#fff" }}>
+      {/* PULSANTE TORNA ALLA DASHBOARD */}
+      <button
+        onClick={() => navigate(`/tenant/${realTenantId}/dashboard`)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          background: "transparent",
+          border: "1px solid rgba(255,255,255,0.1)",
+          padding: "8px 16px",
+          borderRadius: "8px",
+          color: "#9ca3af",
+          cursor: "pointer",
+          marginBottom: "24px",
+          fontSize: "14px",
+          transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+          e.currentTarget.style.color = "#fff";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "#9ca3af";
+        }}
+      >
+        ← Torna alla Dashboard
+      </button>
+
       {/* HEADER */}
       <div
         style={{
@@ -91,7 +188,7 @@ function TenantBrands() {
           onClick={() => setModalOpen(true)}
           style={{
             background: BLUE,
-            color: "#000",
+            color: "#fff",
             padding: "10px 16px",
             borderRadius: "8px",
             border: "none",
@@ -149,15 +246,13 @@ function TenantBrands() {
                 }}
               >
                 <td style={{ padding: "12px 16px" }}>{b.name}</td>
-
                 <td style={{ padding: "12px 16px" }}>
                   {b.is_active ? "✅" : "❌"}
                 </td>
-
                 <td style={{ padding: "12px 16px" }}>
                   <button
                     onClick={async () => {
-                      if (!tenantId) return;
+                      if (!realTenantId) return;
                       try {
                         await toggleVehicleBrand(b.id, !b.is_active);
                         await load();
@@ -171,7 +266,7 @@ function TenantBrands() {
                       borderRadius: "6px",
                       border: "1px solid rgba(255,255,255,0.1)",
                       background: b.is_active ? "#ef4444" : BLUE,
-                      color: b.is_active ? "#fff" : "#000",
+                      color: "#fff",
                       cursor: "pointer",
                       fontWeight: 600,
                     }}
@@ -190,9 +285,9 @@ function TenantBrands() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSave={async (name) => {
-          if (!tenantId) return;
+          if (!realTenantId) return;
           try {
-            await createVehicleBrand(tenantId, name);
+            await createVehicleBrand(realTenantId, name);
             await load();
           } catch (err) {
             console.error("Errore creazione marca:", err);

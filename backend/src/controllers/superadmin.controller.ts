@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { supabase } from "../config/supabase.js";
 import { Resend } from "resend";
+import { syncAllModels, syncModelsForBrand } from "../services/nhtsa.service.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -431,6 +432,705 @@ export async function logAuditController(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       error: err.message || "Errore interno del server"
+    });
+  }
+}
+
+// ============================================================================
+// GET ALL PROFILES (per AuditLogPage)
+// ============================================================================
+export async function getAllProfilesController(req: Request, res: Response) {
+  try {
+    console.log("📥 [getAllProfilesController] Richiesta ricevuta");
+
+    const { data: profiles, error } = await supabase
+      .from("admin_profiles")
+      .select("auth_user_id, first_name, last_name, email, role, company_id");
+
+    if (error) {
+      console.error("❌ Errore recupero profili:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log(`✅ [getAllProfilesController] Trovati ${profiles?.length || 0} profili`);
+
+    return res.status(200).json({
+      success: true,
+      profiles: profiles || []
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE getAllProfilesController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// ============================================================================
+// GET ALL TENANTS (per AuditLogPage)
+// ============================================================================
+export async function getTenantsListController(req: Request, res: Response) {
+  try {
+    console.log("📥 [getTenantsListController] Richiesta ricevuta");
+
+    const { data: tenants, error } = await supabase
+      .from("admin_tenants")
+      .select("id, name")
+      .order("name");
+
+    if (error) {
+      console.error("❌ Errore recupero tenants:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log(`✅ [getTenantsListController] Trovati ${tenants?.length || 0} tenant`);
+
+    return res.status(200).json({
+      success: true,
+      data: tenants || []
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE getTenantsListController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// ============================================================================
+// GLOBAL VEHICLE BRANDS (SuperAdmin)
+// ============================================================================
+
+// GET /api/superadmin/global-brands
+export async function getGlobalBrandsController(req: Request, res: Response) {
+  try {
+    console.log("📥 [getGlobalBrandsController]");
+
+    const { data: brands, error } = await supabase
+      .from("global_vehicle_brands")
+      .select("*")
+      .order("order", { ascending: true })
+      .order("name");
+
+    if (error) {
+      console.error("❌ Errore recupero marche globali:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log(`✅ [getGlobalBrandsController] Trovate ${brands?.length || 0} marche`);
+
+    return res.status(200).json({
+      success: true,
+      data: brands || []
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE getGlobalBrandsController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// POST /api/superadmin/global-brands
+export async function createGlobalBrandController(req: Request, res: Response) {
+  try {
+    const { name, order } = req.body;
+
+    console.log("📥 [createGlobalBrandController] name:", name, "order:", order);
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: "name è richiesto"
+      });
+    }
+
+    // Verifica se esiste già
+    const { data: existing } = await supabase
+      .from("global_vehicle_brands")
+      .select("id")
+      .eq("name", name)
+      .maybeSingle();
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: "Una marca con questo nome esiste già"
+      });
+    }
+
+    const { data: brand, error } = await supabase
+      .from("global_vehicle_brands")
+      .insert({
+        name,
+        order: order || 0,
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("❌ Errore creazione marca globale:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log("✅ [createGlobalBrandController] Marca creata:", brand.id);
+
+    return res.status(201).json({
+      success: true,
+      data: brand
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE createGlobalBrandController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// PUT /api/superadmin/global-brands/:brandId
+export async function updateGlobalBrandController(req: Request, res: Response) {
+  try {
+    const { brandId } = req.params;
+    const { name, order, is_active } = req.body;
+
+    console.log("📥 [updateGlobalBrandController] brandId:", brandId);
+
+    const updates: any = {};
+    if (name !== undefined) updates.name = name;
+    if (order !== undefined) updates.order = order;
+    if (is_active !== undefined) updates.is_active = is_active;
+    updates.updated_at = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("global_vehicle_brands")
+      .update(updates)
+      .eq("id", brandId);
+
+    if (error) {
+      console.error("❌ Errore aggiornamento marca globale:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log("✅ [updateGlobalBrandController] Marca aggiornata");
+
+    return res.status(200).json({
+      success: true,
+      message: "Marca aggiornata con successo"
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE updateGlobalBrandController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// DELETE /api/superadmin/global-brands/:brandId
+export async function deleteGlobalBrandController(req: Request, res: Response) {
+  try {
+    const { brandId } = req.params;
+
+    console.log("📥 [deleteGlobalBrandController] brandId:", brandId);
+
+    // Verifica se ci sono modelli associati
+    const { count, error: countError } = await supabase
+      .from("global_vehicle_models")
+      .select("*", { count: 'exact', head: true })
+      .eq("brand_id", brandId);
+
+    if (count && count > 0) {
+      return res.status(409).json({
+        success: false,
+        error: `Impossibile eliminare: ci sono ${count} modelli associati a questa marca. Elimina prima i modelli.`
+      });
+    }
+
+    const { error } = await supabase
+      .from("global_vehicle_brands")
+      .delete()
+      .eq("id", brandId);
+
+    if (error) {
+      console.error("❌ Errore eliminazione marca globale:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log("✅ [deleteGlobalBrandController] Marca eliminata");
+
+    return res.status(200).json({
+      success: true,
+      message: "Marca eliminata con successo"
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE deleteGlobalBrandController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// ============================================================================
+// GLOBAL VEHICLE CATEGORIES (SuperAdmin)
+// ============================================================================
+
+// GET /api/superadmin/global-categories
+export async function getGlobalCategoriesController(req: Request, res: Response) {
+  try {
+    console.log("📥 [getGlobalCategoriesController]");
+
+    const { data: categories, error } = await supabase
+      .from("global_vehicle_categories")
+      .select("*")
+      .order("name");
+
+    if (error) {
+      console.error("❌ Errore recupero categorie globali:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log(`✅ [getGlobalCategoriesController] Trovate ${categories?.length || 0} categorie`);
+
+    return res.status(200).json({
+      success: true,
+      data: categories || []
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE getGlobalCategoriesController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// POST /api/superadmin/global-categories
+export async function createGlobalCategoryController(req: Request, res: Response) {
+  try {
+    const { name } = req.body;
+
+    console.log("📥 [createGlobalCategoryController] name:", name);
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: "name è richiesto"
+      });
+    }
+
+    // Verifica se esiste già
+    const { data: existing } = await supabase
+      .from("global_vehicle_categories")
+      .select("id")
+      .eq("name", name)
+      .maybeSingle();
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: "Una categoria con questo nome esiste già"
+      });
+    }
+
+    const { data: category, error } = await supabase
+      .from("global_vehicle_categories")
+      .insert({
+        name,
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("❌ Errore creazione categoria globale:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log("✅ [createGlobalCategoryController] Categoria creata:", category.id);
+
+    return res.status(201).json({
+      success: true,
+      data: category
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE createGlobalCategoryController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// PUT /api/superadmin/global-categories/:categoryId
+export async function updateGlobalCategoryController(req: Request, res: Response) {
+  try {
+    const { categoryId } = req.params;
+    const { name, is_active } = req.body;
+
+    console.log("📥 [updateGlobalCategoryController] categoryId:", categoryId);
+
+    const updates: any = {};
+    if (name !== undefined) updates.name = name;
+    if (is_active !== undefined) updates.is_active = is_active;
+    updates.updated_at = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("global_vehicle_categories")
+      .update(updates)
+      .eq("id", categoryId);
+
+    if (error) {
+      console.error("❌ Errore aggiornamento categoria globale:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log("✅ [updateGlobalCategoryController] Categoria aggiornata");
+
+    return res.status(200).json({
+      success: true,
+      message: "Categoria aggiornata con successo"
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE updateGlobalCategoryController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// DELETE /api/superadmin/global-categories/:categoryId
+export async function deleteGlobalCategoryController(req: Request, res: Response) {
+  try {
+    const { categoryId } = req.params;
+
+    console.log("📥 [deleteGlobalCategoryController] categoryId:", categoryId);
+
+    const { error } = await supabase
+      .from("global_vehicle_categories")
+      .delete()
+      .eq("id", categoryId);
+
+    if (error) {
+      console.error("❌ Errore eliminazione categoria globale:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log("✅ [deleteGlobalCategoryController] Categoria eliminata");
+
+    return res.status(200).json({
+      success: true,
+      message: "Categoria eliminata con successo"
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE deleteGlobalCategoryController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// ============================================================================
+// GLOBAL VEHICLE MODELS SYNC (SuperAdmin)
+// ============================================================================
+
+// POST /api/superadmin/global-models/sync-all
+export async function syncAllGlobalModelsController(req: Request, res: Response) {
+  try {
+    console.log("📥 [syncAllGlobalModelsController] Avvio sincronizzazione completa...");
+    
+    const result = await syncAllModels(supabase);
+    
+    return res.status(200).json({
+      success: true,
+      message: `Sincronizzazione completata`,
+      data: {
+        brands_processed: result.brands,
+        new_models_added: result.total
+      }
+    });
+    
+  } catch (err: any) {
+    console.error("❌ ERRORE syncAllGlobalModelsController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Errore durante la sincronizzazione"
+    });
+  }
+}
+
+// POST /api/superadmin/global-models/sync-brand/:brandId
+export async function syncBrandModelsController(req: Request, res: Response) {
+  try {
+    const { brandId } = req.params;
+    
+    console.log(`📥 [syncBrandModelsController] Sincronizzazione per brandId: ${brandId}`);
+    
+    // Recupera la marca
+    const { data: brand, error: brandError } = await supabase
+      .from("global_vehicle_brands")
+      .select("id, name")
+      .eq("id", brandId)
+      .single();
+    
+    if (brandError || !brand) {
+      return res.status(404).json({
+        success: false,
+        error: "Marca non trovata"
+      });
+    }
+    
+    const inserted = await syncModelsForBrand(brand.id, brand.name, supabase);
+    
+    return res.status(200).json({
+      success: true,
+      message: `Sincronizzazione completata per ${brand.name}`,
+      data: {
+        brand_id: brand.id,
+        brand_name: brand.name,
+        new_models_added: inserted
+      }
+    });
+    
+  } catch (err: any) {
+    console.error("❌ ERRORE syncBrandModelsController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Errore durante la sincronizzazione"
+    });
+  }
+}
+
+// ============================================================================
+// GLOBAL VEHICLE MODELS (SuperAdmin)
+// ============================================================================
+
+// GET /api/superadmin/global-models
+export async function getGlobalModelsController(req: Request, res: Response) {
+  try {
+    console.log("📥 [getGlobalModelsController]");
+
+    // 🔥 PAGINAZIONE PER PRENDERE TUTTI I RECORD (Supera il limite di 1000)
+    let allModels: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      
+      const { data: batch, error } = await supabase
+        .from("global_vehicle_models")
+        .select("*")
+        .order("name") // Mantengo l'ordine per sicurezza durante la paginazione
+        .range(from, to);
+      
+      if (error) {
+        console.error("❌ Errore recupero modelli globali (pagina", page, "):", error);
+        return res.status(500).json({
+          success: false,
+          error: error.message
+        });
+      }
+      
+      if (batch && batch.length > 0) {
+        allModels.push(...batch);
+        page++;
+      }
+      
+      if (!batch || batch.length < pageSize) {
+        hasMore = false;
+      }
+    }
+
+    console.log(`📊 Trovati ${allModels.length} modelli globali (paginate, ${page} pagine)`);
+
+    // Recupera marche per i nomi
+    const { data: brands, error: brandsError } = await supabase
+      .from("global_vehicle_brands")
+      .select("id, name")
+      .order("name");
+
+    if (brandsError) {
+      console.error("❌ Errore recupero marche globali:", brandsError);
+    }
+
+    // Recupera categorie per i nomi
+    const { data: categories, error: categoriesError } = await supabase
+      .from("global_vehicle_categories")
+      .select("id, name")
+      .order("name");
+
+    if (categoriesError) {
+      console.error("❌ Errore recupero categorie globali:", categoriesError);
+    }
+
+    const brandMap = new Map();
+    brands?.forEach(b => brandMap.set(b.id, b.name));
+
+    const categoryMap = new Map();
+    categories?.forEach(c => categoryMap.set(c.id, c.name));
+
+    // Arricchisci i modelli
+    const enrichedModels = allModels.map(model => ({
+      ...model,
+      brand_name: brandMap.get(model.brand_id) || "Marca sconosciuta",
+      category_name: categoryMap.get(model.default_category_id) || null
+    }));
+
+    // Ordina per marca, poi per modello
+    enrichedModels.sort((a, b) => {
+      if (a.brand_name !== b.brand_name) {
+        return a.brand_name.localeCompare(b.brand_name);
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    console.log(`✅ [getGlobalModelsController] Trovati ed inviati ${enrichedModels.length} modelli globali`);
+
+    return res.status(200).json({
+      success: true,
+      data: enrichedModels
+    });
+  } catch (err: any) {
+    console.error("❌ ERRORE getGlobalModelsController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// PUT /api/superadmin/global-models/:modelId/category
+export async function updateGlobalModelCategoryController(req: Request, res: Response) {
+  try {
+    const { modelId } = req.params;
+    const { category_id } = req.body;
+
+    console.log("📥 [updateGlobalModelCategoryController] modelId:", modelId, "category_id:", category_id);
+
+    if (!modelId) {
+      return res.status(400).json({
+        success: false,
+        error: "modelId è richiesto"
+      });
+    }
+
+    const { error } = await supabase
+      .from("global_vehicle_models")
+      .update({ default_category_id: category_id || null, updated_at: new Date().toISOString() })
+      .eq("id", modelId);
+
+    if (error) {
+      console.error("❌ Errore aggiornamento categoria modello globale:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log("✅ [updateGlobalModelCategoryController] Categoria aggiornata");
+
+    return res.status(200).json({
+      success: true,
+      message: "Categoria modello globale aggiornata"
+    });
+  } catch (err: any) {
+    console.error("❌ ERRORE updateGlobalModelCategoryController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// PUT /api/superadmin/global-models/:modelId/toggle
+export async function toggleGlobalModelController(req: Request, res: Response) {
+  try {
+    const { modelId } = req.params;
+    const { is_active } = req.body;
+
+    console.log("📥 [toggleGlobalModelController] modelId:", modelId, "is_active:", is_active);
+
+    if (!modelId) {
+      return res.status(400).json({
+        success: false,
+        error: "modelId è richiesto"
+      });
+    }
+
+    const { error } = await supabase
+      .from("global_vehicle_models")
+      .update({ is_active, updated_at: new Date().toISOString() })
+      .eq("id", modelId);
+
+    if (error) {
+      console.error("❌ Errore toggle modello globale:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    console.log("✅ [toggleGlobalModelController] Toggle completato");
+
+    return res.status(200).json({
+      success: true,
+      message: "Modello globale aggiornato"
+    });
+  } catch (err: any) {
+    console.error("❌ ERRORE toggleGlobalModelController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
     });
   }
 }

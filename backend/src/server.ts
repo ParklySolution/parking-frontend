@@ -7,6 +7,7 @@ dotenv.config();
 
 // Import routes
 import superadminRoutes from "./routes/superadmin.routes.js";
+import tenantRoutes from "./routes/tenant.routes.js"; // 🔥 AGGIUNTO
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -29,6 +30,7 @@ app.get("/health", (_req, res) => {
 
 // Routes - NOTA: aggiunto /api/ prefix
 app.use("/api/superadmin", superadminRoutes);
+app.use("/api/tenant", tenantRoutes); // 🔥 NUOVA ROUTE PER TENANT
 
 // 404 handler
 app.use((_req, res) => {
@@ -49,4 +51,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Backend avviato su http://localhost:${PORT}`);
   console.log(`📋 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 Routes: /api/superadmin/tenants/:tenantId/create-tenant-admin`);
+  console.log(`🔗 Tenant routes: /api/tenant/:tenantId/brands`);
 });

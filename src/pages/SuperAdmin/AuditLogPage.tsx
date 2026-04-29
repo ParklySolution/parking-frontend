@@ -4,27 +4,21 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/services/supabase";
 import { logAudit } from "@/services/auditLog";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
 export default function AuditLogPage() {
   const [events, setEvents] = useState([]);
   const [tenants, setTenants] = useState({});
   const [users, setUsers] = useState({});
   const [limit, setLimit] = useState(50);
+  const [loading, setLoading] = useState(true);
 
-  // FILTRI
   const [search, setSearch] = useState("");
   const [filterTenant, setFilterTenant] = useState("");
   const [filterUser, setFilterUser] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
 
-  /* ============================================================
-     LOAD BASE DATA
-  ============================================================ */
   useEffect(() => {
-    console.log("🔵 AuditLogPage MOUNTED");
-
     loadBaseData();
-
-    // ⭐ AUDIT LOG: apertura pagina
     logAudit({
       action: "view_audit_log",
       entity: "audit",
@@ -33,160 +27,135 @@ export default function AuditLogPage() {
     });
   }, []);
 
-  /* ============================================================
-     LOAD EVENTS
-  ============================================================ */
   useEffect(() => {
     loadEvents();
   }, [limit, search]);
 
+  // 🔥 CARICA TENANTS E USERS DAL BACKEND
   async function loadBaseData() {
-    console.log("🔵 Loading base data...");
+    console.log("🔵 Loading base data from backend...");
 
-    // Tenants
-    const { data: tenantData, error: tenantErr } =
-      await supabase.rpc("get_tenants_overview");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-    console.log("📌 get_tenants_overview →", { tenantData, tenantErr });
+      // 1️⃣ Carica tenants da backend
+      const tenantsRes = await fetch(`${API_URL}/api/superadmin/tenants-list`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (tenantsRes.ok) {
+        const tenantsData = await tenantsRes.json();
+        const tenantMap = {};
+        if (tenantsData.data) {
+          tenantsData.data.forEach(t => tenantMap[t.id] = t.name);
+        } else if (tenantsData.tenants) {
+          tenantsData.tenants.forEach(t => tenantMap[t.id] = t.name);
+        }
+        setTenants(tenantMap);
+      }
 
-    if (tenantErr) console.error("❌ ERROR get_tenants_overview:", tenantErr);
+      // 2️⃣ 🔥 CARICA PROFILI DAL BACKEND (NON DA SUPABASE DIRECT)
+      const profilesRes = await fetch(`${API_URL}/api/superadmin/profiles/all`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (profilesRes.ok) {
+        const profilesData = await profilesRes.json();
+        const userMap = {};
+        if (profilesData.profiles) {
+          profilesData.profiles.forEach(u => {
+            const name = `${u.first_name || ""} ${u.last_name || ""}`.trim();
+            userMap[u.auth_user_id] = name || u.email || "Utente sconosciuto";
+          });
+        }
+        setUsers(userMap);
+        console.log("✅ Utenti caricati:", Object.keys(userMap).length);
+      } else {
+        console.error("❌ Errore caricamento profili:", await profilesRes.text());
+      }
 
-    const tenantMap = {};
-    tenantData?.forEach((t) => (tenantMap[t.id] = t.name));
-    setTenants(tenantMap);
-
-    // Users
-    const { data: userData, error: userErr } =
-      await supabase.rpc("get_all_users");
-
-    console.log("📌 get_all_users →", { userData, userErr });
-
-    if (userErr) console.error("❌ ERROR get_all_users:", userErr);
-
-    const userMap = {};
-    userData?.forEach(
-      (u) => (userMap[u.id] = u.full_name || u.email || "Utente sconosciuto")
-    );
-    setUsers(userMap);
+    } catch (err) {
+      console.error("❌ Errore loadBaseData:", err);
+    }
   }
 
+  // 🔥 CARICA EVENTI AUDIT LOG
   async function loadEvents() {
+    setLoading(true);
     console.log("🔵 Loading audit events...", { search, limit });
 
-    let data;
-    let error;
+    try {
+      let query = supabase
+        .from("audit_log")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(limit);
 
-    if (search.trim() !== "") {
-      console.log("🔍 Searching audit events...");
+      if (search.trim() !== "") {
+        query = query.or(`action.ilike.%${search}%, entity.ilike.%${search}%`);
+      }
 
-      const { data: searchData, error: searchErr } =
-        await supabase.rpc("search_audit_events", {
-          query: search,
-          limit_count: limit,
-        });
+      const { data, error } = await query;
 
-      console.log("📌 search_audit_events →", { searchData, searchErr });
-
-      if (searchErr)
-        console.error("❌ ERROR search_audit_events:", searchErr);
-
-      data = searchData;
-      error = searchErr;
-    } else {
-      console.log("📄 Loading recent audit events...");
-
-      const { data: auditData, error: auditErr } =
-        await supabase.rpc("get_recent_audit_events", {
-          limit_count: limit,
-        });
-
-      console.log("📌 get_recent_audit_events →", { auditData, auditErr });
-
-      if (auditErr)
-        console.error("❌ ERROR get_recent_audit_events:", auditErr);
-
-      data = auditData;
-      error = auditErr;
+      if (error) {
+        console.error("❌ Errore caricamento audit log:", error);
+      } else {
+        console.log("✅ Eventi caricati:", data?.length);
+        setEvents(data || []);
+      }
+    } catch (err) {
+      console.error("❌ Eccezione loadEvents:", err);
+    } finally {
+      setLoading(false);
     }
-
-    if (error) {
-      console.error("❌ FINAL AUDIT LOAD ERROR:", error);
-    }
-
-    setEvents(data || []);
   }
 
-  /* ============================================================
-     HELPERS
-  ============================================================ */
   function formatDate(ts) {
     return new Date(ts).toLocaleString("it-IT");
   }
 
-  function getEventIcon(type) {
-    if (!type) return "ℹ️";
-    const t = type.toLowerCase();
+  function getEventIcon(action) {
+    if (!action) return "ℹ️";
+    const t = action.toLowerCase();
     if (t.includes("delete")) return "🗑️";
     if (t.includes("update")) return "✏️";
     if (t.includes("create")) return "🟢";
-    if (t.includes("auth")) return "🔐";
     if (t.includes("impersonate")) return "🕵️";
+    if (t.includes("view")) return "👁️";
     return "📄";
   }
 
-  function getEventColor(type) {
-    if (!type) return "#9ca3af";
-    const t = type.toLowerCase();
+  function getEventColor(action) {
+    if (!action) return "#9ca3af";
+    const t = action.toLowerCase();
     if (t.includes("delete")) return "#f87171";
     if (t.includes("update")) return "#fbbf24";
     if (t.includes("create")) return "#4ade80";
-    if (t.includes("auth")) return "#60a5fa";
     if (t.includes("impersonate")) return "#facc15";
     return "#9ca3af";
   }
 
-  const dynamicTypes = useMemo(() => {
-    const set = new Set();
-    events.forEach((e) => e.event_type && set.add(e.event_type));
-    return Array.from(set);
-  }, [events]);
-
-  function categorize(type) {
-    if (!type) return "other";
-    const t = type.toLowerCase();
-    if (t.includes("create")) return "create";
-    if (t.includes("update")) return "update";
-    if (t.includes("delete")) return "delete";
-    if (t.includes("auth") || t.includes("impersonate")) return "security";
-    return "other";
-  }
-
   const filteredEvents = events.filter((e) => {
-    if (filterTenant && e.tenant_id !== filterTenant) return false;
-    if (filterUser && e.user_id !== filterUser) return false;
-    if (filterCategory && categorize(e.event_type) !== filterCategory)
-      return false;
+    if (filterTenant && e.entity_id !== filterTenant && e.entity !== filterTenant) return false;
+    if (filterUser && e.performed_by !== filterUser) return false;
     return true;
   });
 
-  /* ============================================================
-     RENDER
-  ============================================================ */
+  if (loading) {
+    return (
+      <div style={{ padding: "20px", textAlign: "center" }}>
+        <p style={{ color: "#9ca3af" }}>Caricamento eventi...</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: "20px" }}>
-      {/* HEADER */}
       <div style={{ marginBottom: "30px" }}>
-        <h1
-          style={{
-            color: "#4ea8ff",
-            fontSize: "32px",
-            fontWeight: 700,
-            margin: 0,
-          }}
-        >
+        <h1 style={{ color: "#4ea8ff", fontSize: "32px", fontWeight: 700, margin: 0 }}>
           Audit Log
         </h1>
-
         <p style={{ color: "#9ca3af", marginTop: "6px", fontSize: "15px" }}>
           Storico completo degli eventi di sistema, modifiche e attività degli utenti.
         </p>
@@ -201,14 +170,17 @@ export default function AuditLogPage() {
           border: "1px solid rgba(255,255,255,0.06)",
           marginBottom: "24px",
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(3, 1fr)",
           gap: "12px",
         }}
       >
         <input
           placeholder="Cerca eventi..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            loadEvents();
+          }}
           style={{
             background: "#0b0f14",
             color: "#fff",
@@ -255,25 +227,6 @@ export default function AuditLogPage() {
             </option>
           ))}
         </select>
-
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          style={{
-            background: "#0b0f14",
-            color: "#fff",
-            padding: "10px",
-            borderRadius: "8px",
-            border: "1px solid rgba(255,255,255,0.1)",
-          }}
-        >
-          <option value="">Tutte le categorie</option>
-          <option value="create">Create</option>
-          <option value="update">Update</option>
-          <option value="delete">Delete</option>
-          <option value="security">Security/Auth</option>
-          <option value="other">Other</option>
-        </select>
       </div>
 
       {/* TABELLA */}
@@ -283,17 +236,9 @@ export default function AuditLogPage() {
           borderRadius: "14px",
           padding: "20px",
           border: "1px solid rgba(255,255,255,0.08)",
-          boxShadow: "0 18px 45px rgba(0,0,0,0.6)",
         }}
       >
-        <h3
-          style={{
-            color: "#fff",
-            fontSize: "20px",
-            fontWeight: 600,
-            marginBottom: "16px",
-          }}
-        >
+        <h3 style={{ color: "#fff", fontSize: "20px", fontWeight: 600, marginBottom: "16px" }}>
           Eventi recenti
         </h3>
 
@@ -302,29 +247,29 @@ export default function AuditLogPage() {
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ color: "#9ca3af", textAlign: "left" }}>
+              <tr style={{ color: "#9ca3af", textAlign: "left", borderBottom: "1px solid #1f2937" }}>
                 <th style={{ padding: "10px" }}>Evento</th>
-                <th style={{ padding: "10px" }}>Tenant</th>
+                <th style={{ padding: "10px" }}>Entità</th>
+                <th style={{ padding: "10px" }}>ID Entità</th>
                 <th style={{ padding: "10px" }}>Utente</th>
                 <th style={{ padding: "10px" }}>Data</th>
               </tr>
             </thead>
-
             <tbody>
               {filteredEvents.map((e) => (
                 <tr key={e.id} style={{ borderTop: "1px solid #1f2937" }}>
-                  <td style={{ padding: "10px", color: getEventColor(e.event_type) }}>
-                    {getEventIcon(e.event_type)} {e.event_type}
+                  <td style={{ padding: "10px", color: getEventColor(e.action) }}>
+                    {getEventIcon(e.action)} {e.action}
                   </td>
-
                   <td style={{ padding: "10px", color: "#fff" }}>
-                    {tenants[e.tenant_id] || "—"}
+                    {e.entity || "—"}
                   </td>
-
+                  <td style={{ padding: "10px", color: "#9ca3af", fontSize: "12px" }}>
+                    {e.entity_id ? e.entity_id.substring(0, 8) + "..." : "—"}
+                  </td>
                   <td style={{ padding: "10px", color: "#fff" }}>
-                    {users[e.user_id] || "—"}
+                    {users[e.performed_by] || e.performed_by?.substring(0, 8) + "..." || "—"}
                   </td>
-
                   <td style={{ padding: "10px", color: "#9ca3af" }}>
                     {formatDate(e.created_at)}
                   </td>

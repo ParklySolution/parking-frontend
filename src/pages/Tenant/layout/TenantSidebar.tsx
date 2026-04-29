@@ -195,7 +195,7 @@ export default function TenantSidebar() {
           Termini Contrattuali
         </NavLink>
 
-        {/* ⭐ NUOVA SEZIONE: GESTIONE UTENTI */}
+        {/* Gestione Utenti */}
         <NavLink
           to={`/tenant/${tenantId}/management/users`}
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}

@@ -1,111 +1,141 @@
 // src/services/vehicleBrandService.ts
 import { supabase } from "./supabase";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
 export interface VehicleBrand {
   id: string;
+  global_brand_id: string | null;
   name: string;
   is_active: boolean;
-  created_at: string;
+  is_custom: boolean;
+}
+
+async function getToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || null;
 }
 
 export async function fetchVehicleBrands(tenantId: string): Promise<VehicleBrand[]> {
   console.log("🔍 fetchVehicleBrands chiamato con tenantId:", tenantId);
   
   try {
-    const { data, error } = await supabase
-      .from("vehicle_brands")
-      .select("id, name, is_active, created_at")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .order("name");
-
-    if (error) {
-      console.error("❌ Errore fetchVehicleBrands:", error);
-      throw error;
+    const token = await getToken();
+    if (!token) {
+      console.error("❌ Nessun token disponibile");
+      return [];
     }
 
-    console.log(`✅ Trovati ${data?.length || 0} marche`);
-    return data || [];
+    const response = await fetch(`${API_URL}/api/tenant/${tenantId}/brands`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Errore ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`✅ Trovati ${result.data?.length || 0} marche`);
+    return result.data || [];
   } catch (err) {
     console.error("❌ Errore in fetchVehicleBrands:", err);
     return [];
   }
 }
 
-export async function createVehicleBrand(
-  tenantId: string,
-  name: string
-): Promise<VehicleBrand> {
+export async function createVehicleBrand(tenantId: string, name: string): Promise<VehicleBrand> {
   console.log("🆕 Creazione nuova marca:", { tenantId, name });
   
   try {
-    const { data, error } = await supabase
-      .from("vehicle_brands")
-      .insert({
-        tenant_id: tenantId,
-        name,
-        is_active: true,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("❌ Errore createVehicleBrand:", error);
-      throw error;
+    const token = await getToken();
+    if (!token) {
+      throw new Error("Nessun token disponibile");
     }
 
-    console.log("✅ Marca creata con ID:", data.id);
-    return data;
+    const response = await fetch(`${API_URL}/api/tenant/${tenantId}/brands`, {
+      method: "POST",
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Errore ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log("✅ Marca creata con ID:", result.data.id);
+    return result.data;
   } catch (err) {
     console.error("❌ Errore in createVehicleBrand:", err);
     throw err;
   }
 }
 
-export async function updateVehicleBrand(
-  id: string,
-  updates: Partial<VehicleBrand>
-): Promise<VehicleBrand> {
-  console.log("📝 Aggiornamento marca:", { id, updates });
+export async function toggleVehicleBrand(brandId: string, isActive: boolean): Promise<void> {
+  console.log("🔄 Toggle marca:", { brandId, isActive });
   
   try {
-    const { data, error } = await supabase
-      .from("vehicle_brands")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("❌ Errore updateVehicleBrand:", error);
-      throw error;
+    const token = await getToken();
+    if (!token) {
+      throw new Error("Nessun token disponibile");
     }
 
-    console.log("✅ Marca aggiornata");
-    return data;
-  } catch (err) {
-    console.error("❌ Errore in updateVehicleBrand:", err);
-    throw err;
-  }
-}
+    const urlParts = window.location.pathname.split('/');
+    const tenantId = urlParts[urlParts.indexOf('tenant') + 1];
+    
+    const response = await fetch(`${API_URL}/api/tenant/${tenantId}/brands/${brandId}/toggle`, {
+      method: "PUT",
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ is_active: isActive })
+    });
 
-export async function toggleVehicleBrand(id: string, isActive: boolean): Promise<void> {
-  console.log("🔄 Toggle marca:", { id, isActive });
-  
-  try {
-    const { error } = await supabase
-      .from("vehicle_brands")
-      .update({ is_active: isActive })
-      .eq("id", id);
-
-    if (error) {
-      console.error("❌ Errore toggleVehicleBrand:", error);
-      throw error;
+    if (!response.ok) {
+      throw new Error(`Errore ${response.status}`);
     }
 
     console.log("✅ Toggle completato");
   } catch (err) {
     console.error("❌ Errore in toggleVehicleBrand:", err);
     throw err;
+  }
+}
+
+export async function fetchVehicleCategories(tenantId: string): Promise<any[]> {
+  console.log("🔍 fetchVehicleCategories chiamato con tenantId:", tenantId);
+  
+  try {
+    const token = await getToken();
+    if (!token) {
+      console.error("❌ Nessun token disponibile");
+      return [];
+    }
+
+    const response = await fetch(`${API_URL}/api/tenant/${tenantId}/categories`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Errore ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`✅ Trovate ${result.data?.length || 0} categorie`);
+    return result.data || [];
+  } catch (err) {
+    console.error("❌ Errore in fetchVehicleCategories:", err);
+    return [];
   }
 }

@@ -1,34 +1,91 @@
+// src/pages/Tenant/management/Categories.tsx
+
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { supabase } from "@/services/supabase";
 import {
-  getVehicleCategories,
+  fetchVehicleCategories,
   toggleVehicleCategory,
   createVehicleCategory,
 } from "@/services/vehicleCategoryService";
-
-import type { VehicleCategory } from "@/services/vehicleCategoryService";
 import CategoryModal from "./components/CategoryModal";
 
 export default function TenantCategories() {
-  const { tenantId } = useParams<{ tenantId: string }>();
-  const [categories, setCategories] = useState<VehicleCategory[]>([]);
+  const { tenantId: urlTenantId } = useParams<{ tenantId: string }>();
+  const navigate = useNavigate();
+  const [realTenantId, setRealTenantId] = useState<string | null>(null);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(true);
 
   const BLUE = "#3B82F6";
 
+  // Risolve il tenant ID (company_id → tenant_id)
+  useEffect(() => {
+    async function resolveTenantId() {
+      try {
+        console.log("🔍 TenantCategories - URL tenantId:", urlTenantId);
+
+        if (!urlTenantId) {
+          setError("Tenant ID non trovato nell'URL");
+          setResolving(false);
+          return;
+        }
+
+        // Verifica se è un tenant valido
+        const { data: tenant } = await supabase
+          .from("admin_tenants")
+          .select("id")
+          .eq("id", urlTenantId)
+          .maybeSingle();
+
+        if (tenant) {
+          setRealTenantId(urlTenantId);
+          setResolving(false);
+          return;
+        }
+
+        // Cerca tenant tramite company_id
+        const { data: companyTenant } = await supabase
+          .from("admin_tenants")
+          .select("id")
+          .eq("company_id", urlTenantId)
+          .maybeSingle();
+
+        if (companyTenant) {
+          setRealTenantId(companyTenant.id);
+          setResolving(false);
+          return;
+        }
+
+        setError("Tenant non trovato");
+      } catch (err) {
+        console.error("❌ Errore risoluzione tenant:", err);
+        setError("Errore durante la risoluzione del tenant");
+      } finally {
+        setResolving(false);
+      }
+    }
+
+    resolveTenantId();
+  }, [urlTenantId]);
+
   const load = async () => {
-    if (!tenantId) {
-      setError("Tenant ID non trovato");
+    if (!realTenantId) {
+      setError("Tenant ID non valido");
       setLoading(false);
       return;
     }
 
+    console.log("🔍 TenantCategories - Caricamento categorie per tenantId:", realTenantId);
+
     setLoading(true);
     setError(null);
     try {
-      const data = await getVehicleCategories(tenantId);
+      const data = await fetchVehicleCategories(realTenantId);
+      console.log(`✅ Trovate ${data.length} categorie`);
       setCategories(data);
     } catch (err) {
       console.error("Errore caricamento categorie:", err);
@@ -39,21 +96,16 @@ export default function TenantCategories() {
   };
 
   useEffect(() => {
-    load();
-  }, [tenantId]);
+    if (realTenantId) {
+      load();
+    }
+  }, [realTenantId]);
 
-  if (!tenantId) {
+  if (resolving) {
     return (
-      <div style={{ color: "#ff4444", padding: "24px" }}>
-        Errore: Tenant ID non presente nell'URL
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div style={{ color: "#9ca3af", padding: "24px", textAlign: "center" }}>
-        Caricamento categorie...
+      <div style={{ padding: "24px", textAlign: "center" }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p style={{ color: "#9ca3af", marginTop: "16px" }}>Caricamento tenant...</p>
       </div>
     );
   }
@@ -66,8 +118,54 @@ export default function TenantCategories() {
     );
   }
 
+  if (!realTenantId) {
+    return (
+      <div style={{ color: "#ff4444", padding: "24px" }}>
+        Errore: Tenant ID non valido
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ color: "#9ca3af", padding: "24px", textAlign: "center" }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p style={{ marginTop: "16px" }}>Caricamento categorie...</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: "24px", color: "#fff" }}>
+      {/* Pulsante Torna alla Dashboard */}
+      <button
+        onClick={() => navigate(`/tenant/${realTenantId}/dashboard`)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          background: "transparent",
+          border: "1px solid rgba(255,255,255,0.1)",
+          padding: "8px 16px",
+          borderRadius: "8px",
+          color: "#9ca3af",
+          cursor: "pointer",
+          marginBottom: "24px",
+          fontSize: "14px",
+          transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+          e.currentTarget.style.color = "#fff";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "#9ca3af";
+        }}
+      >
+        ← Torna alla Dashboard
+      </button>
+
       {/* HEADER */}
       <div
         style={{
@@ -84,14 +182,14 @@ export default function TenantCategories() {
             color: BLUE,
           }}
         >
-          🗂️ Categorie veicolo
+          📋 Categorie veicolo
         </h2>
 
         <button
           onClick={() => setModalOpen(true)}
           style={{
             background: BLUE,
-            color: "#000",
+            color: "#fff",
             padding: "10px 16px",
             borderRadius: "8px",
             border: "none",
@@ -149,15 +247,13 @@ export default function TenantCategories() {
                 }}
               >
                 <td style={{ padding: "12px 16px" }}>{c.name}</td>
-
                 <td style={{ padding: "12px 16px" }}>
                   {c.is_active ? "✅" : "❌"}
                 </td>
-
                 <td style={{ padding: "12px 16px" }}>
                   <button
                     onClick={async () => {
-                      if (!tenantId) return;
+                      if (!realTenantId) return;
                       try {
                         await toggleVehicleCategory(c.id, !c.is_active);
                         await load();
@@ -171,7 +267,7 @@ export default function TenantCategories() {
                       borderRadius: "6px",
                       border: "1px solid rgba(255,255,255,0.1)",
                       background: c.is_active ? "#ef4444" : BLUE,
-                      color: c.is_active ? "#fff" : "#000",
+                      color: "#fff",
                       cursor: "pointer",
                       fontWeight: 600,
                     }}
@@ -190,9 +286,9 @@ export default function TenantCategories() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSave={async (name) => {
-          if (!tenantId) return;
+          if (!realTenantId) return;
           try {
-            await createVehicleCategory(tenantId, name);
+            await createVehicleCategory(realTenantId, name);
             await load();
           } catch (err) {
             console.error("Errore creazione categoria:", err);

@@ -1,138 +1,184 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/services/supabase";
-
-interface Brand {
-  id: string;
-  name: string;
-}
-
-interface Category {
-  id: string;
-  name: string;
-}
-
-interface Model {
-  id: string;
-  name: string;
-  is_active: boolean;
-  brand: Brand;
-  category: Category;
-}
+import {
+  fetchVehicleModels,
+  toggleVehicleModel,
+  createVehicleModel,
+  updateVehicleModelCategory,
+} from "@/services/vehicleModelService";
+import { fetchVehicleBrands } from "@/services/vehicleBrandsAdminService";
+import { fetchVehicleCategories } from "@/services/vehicleCategoryService";
+import ModelModal from "./components/ModelModal";
+import EditCategoryModal from "./components/EditCategoryModal";
 
 export default function TenantModels() {
-  const { tenantId } = useParams<{ tenantId: string }>();
-  
-  const [models, setModels] = useState<Model[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-
-  const [name, setName] = useState("");
-  const [brandId, setBrandId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-
+  const { tenantId: urlTenantId } = useParams<{ tenantId: string }>();
+  const navigate = useNavigate();
+  const [realTenantId, setRealTenantId] = useState<string | null>(null);
+  const [models, setModels] = useState<any[]>([]);
+  const [filteredModels, setFilteredModels] = useState<any[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(true);
 
   const BLUE = "#3B82F6";
 
-  async function loadAll() {
-    if (!tenantId) {
-      setError("Tenant ID non trovato");
+  // Risolve il tenant ID
+  useEffect(() => {
+    async function resolveTenantId() {
+      try {
+        console.log("🔍 TenantModels - URL tenantId:", urlTenantId);
+
+        if (!urlTenantId) {
+          setError("Tenant ID non trovato nell'URL");
+          setResolving(false);
+          return;
+        }
+
+        const { data: tenant } = await supabase
+          .from("admin_tenants")
+          .select("id")
+          .eq("id", urlTenantId)
+          .maybeSingle();
+
+        if (tenant) {
+          setRealTenantId(urlTenantId);
+          setResolving(false);
+          return;
+        }
+
+        const { data: companyTenant } = await supabase
+          .from("admin_tenants")
+          .select("id")
+          .eq("company_id", urlTenantId)
+          .maybeSingle();
+
+        if (companyTenant) {
+          setRealTenantId(companyTenant.id);
+          setResolving(false);
+          return;
+        }
+
+        setError("Tenant non trovato");
+      } catch (err) {
+        console.error("❌ Errore risoluzione tenant:", err);
+        setError("Errore durante la risoluzione del tenant");
+      } finally {
+        setResolving(false);
+      }
+    }
+
+    resolveTenantId();
+  }, [urlTenantId]);
+
+  const loadBrands = async () => {
+    if (!realTenantId) return;
+    try {
+      const data = await fetchVehicleBrands(realTenantId);
+      setBrands(data.filter(b => b.is_active));
+    } catch (err) {
+      console.error("Errore caricamento marche:", err);
+    }
+  };
+
+  const loadCategories = async () => {
+    if (!realTenantId) return;
+    try {
+      const data = await fetchVehicleCategories(realTenantId);
+      setCategories(data.filter(c => c.is_active));
+    } catch (err) {
+      console.error("Errore caricamento categorie:", err);
+    }
+  };
+
+  const loadModels = async () => {
+    if (!realTenantId) {
+      setError("Tenant ID non valido");
       setLoading(false);
       return;
     }
 
     setLoading(true);
     setError(null);
-
     try {
-      const [{ data: m }, { data: b }, { data: c }] = await Promise.all([
-        supabase
-          .from("vehicle_models")
-          .select(`
-            id,
-            name,
-            is_active,
-            vehicle_brands ( id, name ),
-            vehicle_categories ( id, name )
-          `)
-          .eq("tenant_id", tenantId)
-          .order("name"),
-
-        supabase
-          .from("vehicle_brands")
-          .select("id, name")
-          .eq("tenant_id", tenantId)
-          .eq("is_active", true)
-          .order("name"),
-
-        supabase
-          .from("vehicle_categories")
-          .select("id, name")
-          .eq("tenant_id", tenantId)
-          .eq("is_active", true)
-          .order("name"),
-      ]);
-
-      setModels(
-        (m ?? []).map((x: any) => ({
-          id: x.id,
-          name: x.name,
-          is_active: x.is_active,
-          brand: x.vehicle_brands,
-          category: x.vehicle_categories,
-        }))
-      );
-
-      setBrands(b ?? []);
-      setCategories(c ?? []);
+      const data = await fetchVehicleModels(realTenantId);
+      setModels(data);
+      setFilteredModels(data);
     } catch (err) {
       console.error("Errore caricamento modelli:", err);
       setError("Errore durante il caricamento dei modelli");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function createModel() {
-    if (!tenantId) return;
-    
-    if (!name || !brandId || !categoryId) {
-      setError("Compila tutti i campi");
-      return;
+  // Filtra modelli in base alla ricerca
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setFilteredModels(models);
+    } else {
+      const term = searchTerm.toLowerCase();
+      const filtered = models.filter(m => 
+        m.name.toLowerCase().includes(term) ||
+        (m.brand_name && m.brand_name.toLowerCase().includes(term))
+      );
+      setFilteredModels(filtered);
     }
+  }, [searchTerm, models]);
 
+  const handleEditCategory = (model: any) => {
+    setSelectedModel(model);
+    setEditModalOpen(true);
+  };
+
+  const handleUpdateCategory = async (modelId: string, categoryId: string) => {
     try {
-      const { error } = await supabase.from("vehicle_models").insert({
-        tenant_id: tenantId,
-        name,
-        brand_id: brandId,
-        category_id: categoryId,
-        is_active: true,
-      });
-
-      if (error) throw error;
-
-      setName("");
-      setBrandId("");
-      setCategoryId("");
-      setError(null);
-      await loadAll();
+      await updateVehicleModelCategory(realTenantId!, modelId, categoryId);
+      await loadModels();
+      setEditModalOpen(false);
+      setSelectedModel(null);
     } catch (err) {
-      console.error("Errore creazione modello:", err);
-      setError("Errore durante la creazione del modello");
+      console.error("Errore aggiornamento categoria:", err);
+      setError("Errore durante l'aggiornamento della categoria");
     }
-  }
+  };
 
   useEffect(() => {
-    loadAll();
-  }, [tenantId]);
+    if (realTenantId) {
+      loadBrands();
+      loadCategories();
+      loadModels();
+    }
+  }, [realTenantId]);
 
-  if (!tenantId) {
+  if (resolving) {
+    return (
+      <div style={{ padding: "24px", textAlign: "center" }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p style={{ color: "#9ca3af", marginTop: "16px" }}>Caricamento tenant...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ color: "#ff4444", padding: "24px", textAlign: "center" }}>
+        {error}
+      </div>
+    );
+  }
+
+  if (!realTenantId) {
     return (
       <div style={{ color: "#ff4444", padding: "24px" }}>
-        Errore: Tenant ID non presente nell'URL
+        Errore: Tenant ID non valido
       </div>
     );
   }
@@ -140,136 +186,95 @@ export default function TenantModels() {
   if (loading) {
     return (
       <div style={{ color: "#9ca3af", padding: "24px", textAlign: "center" }}>
-        Caricamento modelli...
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p style={{ marginTop: "16px" }}>Caricamento modelli...</p>
       </div>
     );
   }
 
   return (
     <div style={{ padding: "24px", color: "#fff" }}>
-      {/* HEADER */}
-      <h2
+      {/* Pulsante Torna alla Dashboard */}
+      <button
+        onClick={() => navigate(`/tenant/${realTenantId}/dashboard`)}
         style={{
-          fontSize: "28px",
-          fontWeight: 700,
-          color: BLUE,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          background: "transparent",
+          border: "1px solid rgba(255,255,255,0.1)",
+          padding: "8px 16px",
+          borderRadius: "8px",
+          color: "#9ca3af",
+          cursor: "pointer",
           marginBottom: "24px",
+          fontSize: "14px",
+          transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+          e.currentTarget.style.color = "#fff";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "#9ca3af";
         }}
       >
-        🚘 Modelli veicolo
-      </h2>
+        ← Torna alla Dashboard
+      </button>
 
-      {error && (
-        <div
-          style={{
-            background: "#ff4444",
-            color: "white",
-            padding: "12px",
-            borderRadius: "6px",
-            marginBottom: "20px",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {/* FORM NUOVO MODELLO */}
+      {/* HEADER */}
       <div
         style={{
-          background: "#111418",
-          padding: "20px",
-          borderRadius: "12px",
-          border: "1px solid rgba(255,255,255,0.06)",
-          marginBottom: "32px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "24px",
+          flexWrap: "wrap",
+          gap: "16px",
         }}
       >
-        <h4
-          style={{
-            margin: 0,
-            marginBottom: "12px",
-            fontSize: "18px",
-            color: BLUE,
-          }}
-        >
-          ➕ Nuovo modello
-        </h4>
-
-        <input
-          placeholder="Nome modello (es. Panda)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "#0d1117",
-            color: "#fff",
-            marginBottom: "12px",
-          }}
-        />
+        <h2 style={{ fontSize: "28px", fontWeight: 700, color: BLUE }}>
+          🚘 Modelli veicolo
+        </h2>
 
         <div style={{ display: "flex", gap: "12px" }}>
-          <select
-            value={brandId}
-            onChange={(e) => setBrandId(e.target.value)}
+          {/* 🔍 Barra di ricerca */}
+          <input
+            type="text"
+            placeholder="🔍 Cerca marca o modello..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
             style={{
-              flex: 1,
-              padding: "10px 12px",
+              width: "250px",
+              padding: "10px 16px",
               borderRadius: "8px",
               border: "1px solid rgba(255,255,255,0.1)",
               background: "#0d1117",
               color: "#fff",
+              fontSize: "14px",
             }}
-          >
-            <option value="">Seleziona marca</option>
-            {brands.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          />
 
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
+          <button
+            onClick={() => setModalOpen(true)}
             style={{
-              flex: 1,
-              padding: "10px 12px",
-              borderRadius: "8px",
-              border: "1px solid rgba(255,255,255,0.1)",
-              background: "#0d1117",
+              background: BLUE,
               color: "#fff",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              border: "none",
+              fontWeight: 600,
+              cursor: "pointer",
             }}
           >
-            <option value="">Seleziona categoria</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            ➕ Nuovo modello
+          </button>
         </div>
-
-        <button
-          onClick={createModel}
-          style={{
-            marginTop: "16px",
-            background: BLUE,
-            color: "#000",
-            padding: "10px 16px",
-            borderRadius: "8px",
-            border: "none",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Salva modello
-        </button>
       </div>
 
       {/* TABELLA */}
-      {models.length === 0 ? (
+      {filteredModels.length === 0 ? (
         <div
           style={{
             background: "#111418",
@@ -279,52 +284,125 @@ export default function TenantModels() {
             color: "#9ca3af",
           }}
         >
-          Nessun modello trovato. Crea il primo modello!
+          {searchTerm ? "Nessun modello trovato per la ricerca." : "Nessun modello trovato."}
         </div>
       ) : (
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            background: "#111418",
-            borderRadius: "12px",
-            overflow: "hidden",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "#1a1f25",
-                textAlign: "left",
-                color: "#9ca3af",
-              }}
-            >
-              <th style={{ padding: "12px 16px" }}>Modello</th>
-              <th style={{ padding: "12px 16px" }}>Marca</th>
-              <th style={{ padding: "12px 16px" }}>Categoria</th>
-              <th style={{ padding: "12px 16px" }}>Attivo</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {models.map((m) => (
+        <div style={{ overflowX: "auto" }}>
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              background: "#111418",
+              borderRadius: "12px",
+              overflow: "hidden",
+            }}
+          >
+            <thead>
               <tr
-                key={m.id}
                 style={{
-                  borderTop: "1px solid rgba(255,255,255,0.06)",
+                  background: "#1a1f25",
+                  textAlign: "left",
+                  color: "#9ca3af",
                 }}
               >
-                <td style={{ padding: "12px 16px" }}>{m.name}</td>
-                <td style={{ padding: "12px 16px" }}>{m.brand?.name}</td>
-                <td style={{ padding: "12px 16px" }}>{m.category?.name}</td>
-                <td style={{ padding: "12px 16px" }}>
-                  {m.is_active ? "✅" : "❌"}
-                </td>
+                <th style={{ padding: "12px 16px" }}>Marca</th>
+                <th style={{ padding: "12px 16px" }}>Modello</th>
+                <th style={{ padding: "12px 16px" }}>Categoria</th>
+                <th style={{ padding: "12px 16px" }}>Attivo</th>
+                <th style={{ padding: "12px 16px" }}>Azioni</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {filteredModels.map((m) => (
+                <tr
+                  key={m.id}
+                  style={{
+                    borderTop: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <td style={{ padding: "12px 16px" }}>{m.brand_name || "—"}</td>
+                  <td style={{ padding: "12px 16px" }}>{m.name}</td>
+                  <td style={{ padding: "12px 16px", color: m.category_name ? "#fff" : "#888" }}>
+                    {m.category_name || "—"}
+                  </td>
+                  <td style={{ padding: "12px 16px" }}>{m.is_active ? "✅" : "❌"}</td>
+                  <td style={{ padding: "12px 16px", display: "flex", gap: "8px" }}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await toggleVehicleModel(m.id, !m.is_active);
+                          await loadModels();
+                        } catch (err) {
+                          console.error("Errore toggle modello:", err);
+                          setError("Errore durante l'aggiornamento");
+                        }
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: m.is_active ? "#ef4444" : BLUE,
+                        color: "#fff",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {m.is_active ? "Disattiva" : "Attiva"}
+                    </button>
+
+                    {/* ✏️ Pulsante Modifica categoria */}
+                    <button
+                      onClick={() => handleEditCategory(m)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: "transparent",
+                        color: BLUE,
+                        cursor: "pointer",
+                        fontWeight: 500,
+                      }}
+                    >
+                      ✏️ Categoria
+                    </button>
+                  </td>
+                 </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
+
+      {/* MODALE CREAZIONE */}
+      <ModelModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        brands={brands}
+        categories={categories}
+        onSave={async (brandId, categoryId, name) => {
+          if (!realTenantId) return;
+          try {
+            await createVehicleModel(realTenantId, brandId, categoryId, name);
+            await loadModels();
+          } catch (err) {
+            console.error("Errore creazione modello:", err);
+            setError("Errore durante la creazione");
+          }
+        }}
+      />
+
+      {/* MODALE MODIFICA CATEGORIA */}
+      <EditCategoryModal
+        open={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setSelectedModel(null);
+        }}
+        model={selectedModel}
+        categories={categories}
+        onSave={handleUpdateCategory}
+      />
     </div>
   );
 }

@@ -238,3 +238,46 @@
 .sa-drawer-content {
   pointer-events: auto !important;
 }
+
+/* Aggiungi a src/styles/superadmin.css */
+
+.management-section {
+  margin-top: 24px;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b7280;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+}
+
+.sa-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  color: #9ca3af;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  margin: 2px 8px;
+}
+
+.sa-link .icon {
+  font-size: 18px;
+  width: 20px;
+}
+
+.sa-link:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.sa-link.active {
+  background: #2563eb;
+  color: #fff;
+}

@@ -8,7 +8,12 @@ git commit -m "Feat: creazione tenant admin funzionante con profilo admin_profil
 per terminare il backend:  taskkill /F /IM node.exe
 
 
-
+per uscire dal login: import('/src/services/supabase.ts').then(module => {
+  module.supabase.auth.signOut().then(() => {
+    console.log('✅ Logout effettuato');
+    window.location.href = '/admin/login';
+  });
+});
 
 
 
@@ -25,7 +30,8 @@ Password: Tombstone78!
 
 User UID: a43fa4e7-f209-4632-b843-ad5e583b7f8c
 
-
+admin tenant: user: germanogianni78@gmail.com
+password: Tokio2026!
 
 
 E-mail user Tenant: Parking Belgio & Oasi Car Wash

@@ -53,10 +53,13 @@ import PlanDetailPage from "@/pages/SuperAdmin/PlanDetailPage";
 import PlanCreatePage from "@/pages/SuperAdmin/PlanCreatePage";
 import PlanEditPage from "@/pages/SuperAdmin/PlanEditPage";
 import PlansManagementPage from "@/pages/SuperAdmin/PlansManagementPage";
-import AdminsList from "@/pages/SuperAdmin/AdminsList";
 import GlobalFeatureFlagsPanel from "@/pages/superadmin/GlobalFeatureFlagsPanel";
 import TenantFeatureFlagsPanel from "@/pages/superadmin/TenantFeatureFlagsPanel";
 import AuditLogPage from "@/pages/SuperAdmin/AuditLogPage";
+import GlobalBrandsPage from "@/pages/SuperAdmin/GlobalBrandsPage";
+import GlobalCategoriesPage from "@/pages/SuperAdmin/GlobalCategoriesPage";
+import ModelsSyncPage from "@/pages/SuperAdmin/ModelsSyncPage";
+import GlobalModelsPage from "@/pages/SuperAdmin/GlobalModelsPage";
 
 /* ⭐ NEW: COMPANIES */
 import CompaniesList from "@/pages/SuperAdmin/CompaniesList";
@@ -237,7 +240,6 @@ function App() {
         <Route path="/super" element={<SuperAdminLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<SuperAdminDashboard />} />
-          <Route path="admins" element={<AdminsList />} />
 
           <Route path="companies" element={<CompaniesList />} />
           <Route path="companies/:id" element={<CompanyDetail />} />
@@ -262,6 +264,10 @@ function App() {
 
           <Route path="feature-flags" element={<GlobalFeatureFlagsPanel />} />
           <Route path="logs" element={<AuditLogPage />} />
+          <Route path="global-brands" element={<GlobalBrandsPage />} />
+          <Route path="global-categories" element={<GlobalCategoriesPage />} />
+          <Route path="models-sync" element={<ModelsSyncPage />} />
+          <Route path="global-models" element={<GlobalModelsPage />} />
         </Route>
 
         {/* TENANT PANEL */}
