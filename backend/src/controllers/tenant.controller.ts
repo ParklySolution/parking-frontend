@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
 import { supabase } from "../config/supabase.js";
+import { Resend } from "resend";
+import crypto from "crypto";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 // ============================================================================
 // TENANT VEHICLE BRANDS
@@ -439,7 +444,7 @@ export async function getTenantModelsController(req: Request, res: Response) {
   }
 }
 
-// POST /api/tenant/:tenantId/models (AGGIORNATO CON CATEGORY_ID)
+// POST /api/tenant/:tenantId/models
 export async function createTenantModelController(req: Request, res: Response) {
   try {
     const { tenantId } = req.params;
@@ -490,7 +495,7 @@ export async function createTenantModelController(req: Request, res: Response) {
       });
     }
 
-    // 🔥 Verifica che la categoria appartenga al tenant
+    // Verifica che la categoria appartenga al tenant
     const { data: category, error: categoryError } = await supabase
       .from("tenant_vehicle_categories")
       .select("id")
@@ -652,5 +657,155 @@ export async function updateModelCategoryController(req: Request, res: Response)
       success: false,
       error: err.message
     });
+  }
+}
+
+// ============================================================================
+// INVITA OPERATORE (TENANT ADMIN)
+// ============================================================================
+
+export async function inviteOperatorController(req: Request, res: Response) {
+  try {
+    const { tenantId } = req.params;
+    const { email, first_name, last_name, role } = req.body;
+
+    console.log("📧 [inviteOperator] Creazione invito per:", email);
+    console.log("📧 [inviteOperator] Tenant ID:", tenantId);
+
+    if (!email || !first_name || !last_name) {
+      return res.status(400).json({ error: "Email, nome e cognome richiesti" });
+    }
+
+    // 1. Verifica se l'utente esiste già
+    let userId = null;
+    let existingUser = null;
+
+    try {
+      const { data: { users } } = await supabase.auth.admin.listUsers();
+      existingUser = users.find(u => u.email === email);
+      if (existingUser) {
+        userId = existingUser.id;
+        console.log("✅ Utente già esistente:", userId);
+      }
+    } catch (err) {
+      console.warn("⚠️ Errore listUsers, continuo...");
+    }
+
+    // 2. Crea l'utente se non esiste
+    if (!userId) {
+      const tempPassword = crypto.randomBytes(8).toString("hex") + "!Aa1";
+      
+      const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+        email: email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name: `${first_name} ${last_name}`,
+          role: role || "operator",
+          tenant_id: tenantId
+        }
+      });
+
+      if (authError) {
+        console.error("❌ Errore creazione utente:", authError);
+        return res.status(500).json({ error: authError.message });
+      }
+
+      userId = authUser.user.id;
+      console.log("✅ Utente creato:", userId);
+    }
+
+    // 3. Crea/aggiorna il profilo
+    const { error: profileError } = await supabase
+      .from("admin_profiles")
+      .upsert({
+        auth_user_id: userId,
+        email: email,
+        first_name: first_name,
+        last_name: last_name,
+        role: role || "operator",
+        company_id: null
+      }, { onConflict: "auth_user_id" });
+
+    if (profileError) {
+      console.error("❌ Errore profilo:", profileError);
+      return res.status(500).json({ error: profileError.message });
+    }
+
+    // 4. CREA L'INVITO NELLA TABELLA user_invites
+    const inviteToken = crypto.randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 48);
+
+    const { error: inviteError } = await supabase
+      .from("user_invites")
+      .insert({
+        token: inviteToken,
+        email: email,
+        user_id: userId,
+        tenant_id: tenantId,
+        role: role || "operator",
+        expires_at: expiresAt.toISOString()
+      });
+
+    if (inviteError) {
+      console.error("❌ Errore creazione invito:", inviteError);
+      return res.status(500).json({ error: inviteError.message });
+    }
+
+    console.log("✅ Invito creato con token:", inviteToken);
+
+    // 5. Invia email
+    const inviteLink = `${FRONTEND_URL}/accept-invite?token=${inviteToken}`;
+
+    const { error: emailError } = await resend.emails.send({
+      from: "Parkly <no-reply@park-ly.it>",
+      to: [email],
+      subject: "Sei stato invitato - Parkly",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #3B82F6;">Parkly</h1>
+          </div>
+          
+          <div style="background: #f0f7ff; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <p style="margin: 0; font-size: 16px;">Ciao <strong>${first_name} ${last_name}</strong>,</p>
+            <p style="margin: 10px 0 0;">Sei stato invitato come <strong>${role || "operatore"}</strong> su Parkly.</p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${inviteLink}" 
+               style="background: #3B82F6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 16px; font-weight: bold;">
+              Accetta l'invito
+            </a>
+          </div>
+          
+          <p style="margin-top: 20px; font-size: 12px; color: #999; text-align: center;">
+            Link valido per 48 ore.<br>
+            &copy; Parkly - Gestione parcheggi
+          </p>
+        </div>
+      `
+    });
+
+    if (emailError) {
+      console.error("❌ Errore invio email:", emailError);
+    } else {
+      console.log("✅ Email inviata a:", email);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Operatore invitato con successo",
+      data: {
+        user_id: userId,
+        email: email,
+        invite_link: inviteLink
+      }
+    });
+
+  } catch (err: any) {
+    console.error("❌ ERRORE inviteOperatorController:", err);
+    return res.status(500).json({ error: err.message });
   }
 }

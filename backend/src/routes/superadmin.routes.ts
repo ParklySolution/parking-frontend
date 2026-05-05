@@ -14,17 +14,21 @@ import {
   getGlobalCategoriesController,
   createGlobalCategoryController,
   updateGlobalCategoryController,
-  deleteGlobalCategoryController,  // ← punto e virgola, non punto e virgola + punto e virgola
+  deleteGlobalCategoryController,
   syncAllGlobalModelsController,
   syncBrandModelsController,
   getGlobalModelsController,
   updateGlobalModelCategoryController,
-  toggleGlobalModelController
+  toggleGlobalModelController,
+  importGlobalModelsFromCSVController,
+  exportGlobalModelsToCSVController
 } from "../controllers/superadmin.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireSuperAdmin } from "../middleware/role.middleware.js";
+import multer from "multer";
 
 const router = Router();
+const upload = multer({ dest: "uploads/" });
 
 // ============================================================================
 // TENANT ADMIN MANAGEMENT
@@ -116,5 +120,11 @@ router.post("/global-models/sync-brand/:brandId", authMiddleware, requireSuperAd
 router.get("/global-models", authMiddleware, requireSuperAdmin, getGlobalModelsController);
 router.put("/global-models/:modelId/category", authMiddleware, requireSuperAdmin, updateGlobalModelCategoryController);
 router.put("/global-models/:modelId/toggle", authMiddleware, requireSuperAdmin, toggleGlobalModelController);
+
+// ============================================================================
+// GLOBAL VEHICLE MODELS CSV IMPORT/EXPORT (SuperAdmin)
+// ============================================================================
+router.post("/global-models/import-csv", authMiddleware, requireSuperAdmin, upload.single("file"), importGlobalModelsFromCSVController);
+router.get("/global-models/export-csv", authMiddleware, requireSuperAdmin, exportGlobalModelsToCSVController);
 
 export default router;

@@ -30,8 +30,19 @@ Password: Tombstone78!
 
 User UID: a43fa4e7-f209-4632-b843-ad5e583b7f8c
 
+Test Parking
 admin tenant: user: germanogianni78@gmail.com
 password: Tokio2026!
+
+Prova Parking
+admin tenant: user: gianni.germano@hotmail.it
+password:  Miami2026!
+
+
+
+
+
+
 
 
 E-mail user Tenant: Parking Belgio & Oasi Car Wash

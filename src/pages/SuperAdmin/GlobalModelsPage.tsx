@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   fetchGlobalModels,
   updateGlobalModelCategory,
-  toggleGlobalModel
+  toggleGlobalModel,
+  importGlobalModelsFromCSV,
+  exportGlobalModelsToCSV
 } from "@/services/globalModelsService";
 import { fetchGlobalBrands } from "@/services/globalBrandsService";
 import { fetchGlobalCategories } from "@/services/globalCategoriesService";
@@ -21,25 +23,31 @@ interface GlobalModel {
 export default function GlobalModelsPage() {
   const [models, setModels] = useState<GlobalModel[]>([]);
   const [filteredModels, setFilteredModels] = useState<GlobalModel[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<GlobalModel | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const BLUE = "#3B82F6";
+  const GREEN = "#10b981";
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [modelsData, categoriesData] = await Promise.all([
+      const [modelsData, brandsData, categoriesData] = await Promise.all([
         fetchGlobalModels(),
+        fetchGlobalBrands(),
         fetchGlobalCategories()
       ]);
       setModels(modelsData);
       setFilteredModels(modelsData);
+      setBrands(brandsData);
       setCategories(categoriesData);
     } catch (err) {
       console.error("Errore caricamento dati:", err);
@@ -94,6 +102,33 @@ export default function GlobalModelsPage() {
     }
   };
 
+  const handleImportCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      const result = await importGlobalModelsFromCSV(file);
+      alert(`✅ Importazione completata!\nImportati: ${result.data.imported}\nDuplicati: ${result.data.duplicates}\nErrori: ${result.data.errors}`);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      await exportGlobalModelsToCSV();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ padding: "60px", textAlign: "center", color: "#9ca3af" }}>
@@ -121,15 +156,15 @@ export default function GlobalModelsPage() {
         </div>
       )}
 
-      {/* Barra di ricerca */}
-      <div style={{ marginBottom: "24px" }}>
+      {/* Barra di ricerca e pulsanti CSV */}
+      <div style={{ marginBottom: "24px", display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
         <input
           type="text"
           placeholder="🔍 Cerca marca o modello..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
-            width: "100%",
+            flex: 1,
             maxWidth: "400px",
             padding: "10px 16px",
             borderRadius: "8px",
@@ -139,6 +174,49 @@ export default function GlobalModelsPage() {
             fontSize: "14px",
           }}
         />
+        
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          onChange={handleImportCSV}
+          style={{ display: "none" }}
+        />
+        
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          style={{
+            padding: "10px 20px",
+            borderRadius: "8px",
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "transparent",
+            color: "#fff",
+            cursor: uploading ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
+          }}
+        >
+          {uploading ? "⏳" : "📤"} Importa CSV
+        </button>
+        
+        <button
+          onClick={handleExportCSV}
+          style={{
+            padding: "10px 20px",
+            borderRadius: "8px",
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: "transparent",
+            color: "#fff",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
+          }}
+        >
+          📥 Esporta CSV
+        </button>
       </div>
 
       {/* Tabella */}

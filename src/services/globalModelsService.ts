@@ -107,3 +107,57 @@ export async function toggleGlobalModel(modelId: string, isActive: boolean): Pro
     throw err;
   }
 }
+
+export async function importGlobalModelsFromCSV(file: File): Promise<any> {
+  console.log("📤 Importazione modelli da CSV");
+  
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/superadmin/global-models/import-csv`, {
+    method: "POST",
+    headers: {
+      'Authorization': `Bearer ${token}`
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || `Errore ${response.status}`);
+  }
+
+  const result = await response.json();
+  console.log(`✅ Import completato: ${result.data.imported} modelli aggiunti`);
+  return result;
+}
+
+export async function exportGlobalModelsToCSV(): Promise<void> {
+  console.log("📥 Esportazione modelli in CSV");
+  
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/superadmin/global-models/export-csv`, {
+    method: "GET",
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Errore ${response.status}`);
+  }
+
+  // Scarica il file
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'global_models_export.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+  
+  console.log("✅ Esportazione completata");
+}

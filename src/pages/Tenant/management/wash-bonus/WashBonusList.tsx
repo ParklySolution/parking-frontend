@@ -8,7 +8,7 @@ interface BonusRule {
   id: string;
   tenant_id: string;
   wash_service_id: string;
-  bonus_type: 'free_hours' | 'free_parking' | 'discount_percentage' | 'fixed_discount';
+  bonus_type: 'free_hours' | 'free_parking' | 'discount_percentage' | 'fixed_discount' | 'recurring_wash';
   bonus_value: number;
   min_wash_amount: number | null;
   applicable_categories: string[] | null;
@@ -16,6 +16,13 @@ interface BonusRule {
   valid_days_of_week: number[] | null;
   is_active: boolean;
   created_at: string;
+  // 🔥 NUOVI CAMPI PER REGOLE RICORRENTI
+  is_recurring?: boolean;
+  recurring_threshold?: number;
+  recurring_reward_type?: string;
+  recurring_reward_value?: number;
+  trigger_service_id?: string;
+  reward_service_id?: string;
 }
 
 export default function WashBonusList() {
@@ -93,7 +100,18 @@ export default function WashBonusList() {
   }
 
   function getServiceName(serviceId: string): string {
+    if (!serviceId) return "Servizio non specificato";
     return services.find(s => s.id === serviceId)?.name || "Servizio sconosciuto";
+  }
+
+  function getTriggerServiceName(triggerServiceId?: string): string | undefined {
+    if (!triggerServiceId) return undefined;
+    return services.find(s => s.id === triggerServiceId)?.name;
+  }
+
+  function getRewardServiceName(rewardServiceId?: string): string | undefined {
+    if (!rewardServiceId) return undefined;
+    return services.find(s => s.id === rewardServiceId)?.name;
   }
 
   if (loading) {
@@ -147,7 +165,7 @@ export default function WashBonusList() {
       ) : (
         <div style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))",
           gap: "20px"
         }}>
           {bonusRules.map((rule) => (
@@ -155,6 +173,8 @@ export default function WashBonusList() {
               key={rule.id}
               rule={rule}
               serviceName={getServiceName(rule.wash_service_id)}
+              triggerServiceName={getTriggerServiceName(rule.trigger_service_id)}
+              rewardServiceName={getRewardServiceName(rule.reward_service_id)}
               categories={categories}
               onEdit={() => handleEdit(rule)}
               onToggle={() => toggleActive(rule.id, rule.is_active)}

@@ -372,36 +372,36 @@ async function saveService(form: Partial<WashService>) {
           </div>
 
           <table style={priceTable}>
-            <thead>
-              <tr>
-                <th>Categoria</th>
-                <th>Prezzo</th>
-                <th>Durata</th>
-                <th>Punti</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {prices
-                .filter((p) => p.wash_service_id === drawerService.id)
-                .map((p) => {
-                  const cat = categories.find((c) => c.id === p.vehicle_category_id);
-                  return (
-                    <tr key={p.id}>
-                      <td>{cat?.name || "-"}</td>
-                      <td>€ {p.price}</td>
-                      <td>{p.duration_minutes} min</td>
-                      <td>{p.fidelity_points}</td>
-                      <td>
-                        <button style={btnSmall} onClick={() => openPriceDrawer(p)}>
-                          Modifica
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
+  <thead>
+    <tr>
+      <th style={priceTableTh}>Categoria</th>
+      <th style={priceTableTh}>Prezzo</th>
+      <th style={priceTableTh}>Durata</th>
+      <th style={priceTableTh}>Punti</th>
+      <th style={priceTableTh}></th>
+    </tr>
+  </thead>
+  <tbody>
+    {prices
+      .filter((p) => p.wash_service_id === drawerService.id)
+      .map((p) => {
+        const cat = categories.find((c) => c.id === p.vehicle_category_id);
+        return (
+          <tr key={p.id}>
+            <td style={priceTableTd}>{cat?.name || "-"}</td>
+            <td style={priceTableTd}>€ {p.price}</td>
+            <td style={priceTableTd}>{p.duration_minutes} min</td>
+            <td style={priceTableTd}>{p.fidelity_points}</td>
+            <td style={priceTableTd}>
+              <button style={btnSmall} onClick={() => openPriceDrawer(p)}>
+                Modifica
+              </button>
+            </td>
+          </tr>
+        );
+      })}
+  </tbody>
+</table>
         </Drawer>
       )}
 
@@ -642,7 +642,7 @@ function ServiceForm({
 }
 
 /* ======================================================
-   STILI PREMIUM — PARKING LABS
+   STILI PREMIUM DARK — PARKING LABS
    ====================================================== */
 
 const headerRow = {
@@ -666,7 +666,7 @@ const kpiRow = {
 };
 
 const kpiBox = {
-  background: "#1b263b",
+  background: "#1a1f25",
   padding: "20px",
   borderRadius: "12px",
   flex: 1,
@@ -674,8 +674,8 @@ const kpiBox = {
   border: "1px solid rgba(255,255,255,0.06)",
 };
 
-const kpiLabel = { fontSize: "14px", opacity: 0.7, marginBottom: "4px" };
-const kpiValue = { fontSize: "26px", fontWeight: 700 };
+const kpiLabel = { fontSize: "14px", color: "#9ca3af", marginBottom: "4px" };
+const kpiValue = { fontSize: "26px", fontWeight: 700, color: "#fff" };
 
 const cardGrid = {
   display: "grid",
@@ -684,7 +684,7 @@ const cardGrid = {
 };
 
 const serviceCard = {
-  background: "#1b263b",
+  background: "#111418",
   color: "white",
   padding: "20px",
   borderRadius: "12px",
@@ -696,14 +696,14 @@ const serviceCard = {
 };
 
 const cardTitle = { fontSize: "20px", fontWeight: 700, margin: "0 0 4px 0", color: "#3B82F6" };
-const cardSubtitle = { fontSize: "14px", opacity: 0.8, marginBottom: "8px" };
-const cardDescription = { fontSize: "14px", opacity: 0.9, marginBottom: "12px" };
+const cardSubtitle = { fontSize: "14px", color: "#9ca3af", marginBottom: "8px" };
+const cardDescription = { fontSize: "14px", color: "#9ca3af", marginBottom: "12px" };
 
 const cardInfoRow = {
   display: "flex",
   justifyContent: "space-between",
   fontSize: "14px",
-  opacity: 0.9,
+  color: "#9ca3af",
   marginBottom: "4px",
 };
 
@@ -726,11 +726,11 @@ const btnPrimary = {
 };
 
 const btnSecondary = {
-  background: "white",
-  color: "#1b263b",
+  background: "#1a1f25",
+  color: "#fff",
   padding: "8px 14px",
   borderRadius: "6px",
-  border: "1px solid #ccc",
+  border: "1px solid rgba(255,255,255,0.1)",
   cursor: "pointer",
   fontWeight: 600,
   fontSize: "14px",
@@ -750,28 +750,44 @@ const priceTable = {
   width: "100%",
   borderCollapse: "collapse",
   fontSize: "14px",
+  color: "#fff",
 };
 
+const priceTableTh = {
+  padding: "10px 8px",
+  textAlign: "left",
+  borderBottom: "1px solid rgba(255,255,255,0.1)",
+  color: "#9ca3af",
+  fontWeight: 600,
+};
+
+const priceTableTd = {
+  padding: "10px 8px",
+  borderBottom: "1px solid rgba(255,255,255,0.06)",
+  color: "#fff",
+};
+
+/* DRAWER DARK */
 const drawerOverlay = {
-  position: "fixed",
+  position: "fixed" as const,
   top: 0,
   left: 0,
   width: "100vw",
   height: "100vh",
-  background: "rgba(0,0,0,0.45)",
+  background: "rgba(0,0,0,0.7)",
   display: "flex",
   justifyContent: "flex-end",
   zIndex: 9999,
 };
 
 const drawer = {
-  width: "420px",
+  width: "480px",
   height: "100%",
-  background: "#ffffff",
-  padding: "32px",
-  boxShadow: "-4px 0 12px rgba(0,0,0,0.15)",
-  overflowY: "auto",
-  borderLeft: "1px solid #e5e7eb",
+  background: "#111418",
+  padding: "28px",
+  boxShadow: "-4px 0 12px rgba(0,0,0,0.3)",
+  overflowY: "auto" as const,
+  borderLeft: "1px solid rgba(255,255,255,0.08)",
 };
 
 const drawerHeader = {
@@ -786,11 +802,12 @@ const drawerClose = {
   border: "none",
   fontSize: "20px",
   cursor: "pointer",
+  color: "#9ca3af",
 };
 
 const drawerContent = {
   display: "flex",
-  flexDirection: "column",
+  flexDirection: "column" as const,
   gap: "16px",
 };
 
@@ -804,7 +821,7 @@ const drawerFooter = {
 const label = {
   fontSize: "14px",
   fontWeight: 600,
-  color: "#1f2937",
+  color: "#9ca3af",
   marginBottom: "4px",
 };
 
@@ -812,10 +829,10 @@ const input = {
   width: "100%",
   padding: "10px 12px",
   borderRadius: "6px",
-  border: "1px solid #d1d5db",
+  border: "1px solid rgba(255,255,255,0.1)",
   fontSize: "14px",
-  color: "#111827",
-  background: "#ffffff",
+  color: "#fff",
+  background: "#0d1117",
   boxSizing: "border-box" as const,
 };
 

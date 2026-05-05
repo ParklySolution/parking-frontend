@@ -1134,3 +1134,246 @@ export async function toggleGlobalModelController(req: Request, res: Response) {
     });
   }
 }
+
+// ============================================================================
+// CSV IMPORT/EXPORT PER MODELLI GLOBALI
+// ============================================================================
+
+import multer from "multer";
+import csv from "csv-parser";
+import fs from "fs";
+import path from "path";
+
+// Configura multer per upload temporaneo
+const upload = multer({ dest: "uploads/" });
+
+// POST /api/superadmin/global-models/import-csv
+export async function importGlobalModelsFromCSVController(req: Request, res: Response) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: "Nessun file CSV caricato"
+      });
+    }
+
+    const results: any[] = [];
+    const duplicates: any[] = [];
+    const imported: any[] = [];
+    const errors: any[] = [];
+
+    // Leggi il CSV
+    fs.createReadStream(req.file.path)
+      .pipe(csv())
+      .on('data', (data) => results.push(data))
+      .on('end', async () => {
+        console.log(`📄 CSV letto: ${results.length} righe`);
+        
+        for (const row of results) {
+          try {
+            // Verifica campi obbligatori
+            if (!row.brand_name || !row.model_name) {
+              errors.push({
+                row,
+                error: "Marca e nome modello sono obbligatori"
+              });
+              continue;
+            }
+
+            // 1. Trova o crea la marca
+            let brandId = row.brand_id;
+            if (!brandId) {
+              let { data: existingBrand } = await supabase
+                .from("global_vehicle_brands")
+                .select("id, name")
+                .eq("name", row.brand_name.trim())
+                .single();
+
+              if (!existingBrand) {
+                const { data: newBrand, error: brandError } = await supabase
+                  .from("global_vehicle_brands")
+                  .insert({
+                    name: row.brand_name.trim(),
+                    is_active: row.brand_active !== undefined ? row.brand_active === "true" : true,
+                    order: row.brand_order || 999
+                  })
+                  .select()
+                  .single();
+
+                if (brandError) {
+                  errors.push({ row, error: `Errore creazione marca: ${brandError.message}` });
+                  continue;
+                }
+                brandId = newBrand.id;
+                console.log(`✅ Marca creata: ${row.brand_name}`);
+              } else {
+                brandId = existingBrand.id;
+              }
+            }
+
+            // 2. Verifica se il modello esiste già
+            const { data: existingModel } = await supabase
+              .from("global_vehicle_models")
+              .select("id, name")
+              .eq("brand_id", brandId)
+              .eq("name", row.model_name.trim())
+              .single();
+
+            if (existingModel) {
+              duplicates.push({
+                brand: row.brand_name,
+                model: row.model_name,
+                existing_id: existingModel.id
+              });
+              continue;
+            }
+
+            // 3. Trova categoria se specificata
+            let categoryId = row.category_id;
+            if (row.category_name && !categoryId) {
+              const { data: existingCategory } = await supabase
+                .from("global_vehicle_categories")
+                .select("id")
+                .eq("name", row.category_name.trim())
+                .single();
+
+              if (existingCategory) {
+                categoryId = existingCategory.id;
+              }
+            }
+
+            // 4. Crea il nuovo modello
+            const { data: newModel, error: modelError } = await supabase
+              .from("global_vehicle_models")
+              .insert({
+                brand_id: brandId,
+                name: row.model_name.trim(),
+                default_category_id: categoryId || null,
+                is_active: row.is_active !== undefined ? row.is_active === "true" : true,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .select()
+              .single();
+
+            if (modelError) {
+              errors.push({ row, error: modelError.message });
+            } else {
+              imported.push(newModel);
+            }
+
+          } catch (err: any) {
+            errors.push({ row, error: err.message });
+          }
+        }
+
+        // Pulisci file temporaneo
+        fs.unlinkSync(req.file.path);
+
+        console.log(`📊 Import completato: ${imported.length} importati, ${duplicates.length} duplicati, ${errors.length} errori`);
+
+        return res.status(200).json({
+          success: true,
+          data: {
+            imported: imported.length,
+            duplicates: duplicates.length,
+            errors: errors.length,
+            duplicate_list: duplicates,
+            error_list: errors,
+            imported_models: imported
+          },
+          message: `Importazione completata: ${imported.length} modelli aggiunti, ${duplicates.length} duplicati ignorati`
+        });
+      });
+      
+  } catch (err: any) {
+    console.error("❌ ERRORE importGlobalModelsFromCSVController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
+
+// GET /api/superadmin/global-models/export-csv
+export async function exportGlobalModelsToCSVController(req: Request, res: Response) {
+  try {
+    console.log("📥 [exportGlobalModelsToCSVController]");
+
+    // Recupera tutti i modelli
+    let allModels: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      
+      const { data: batch, error } = await supabase
+        .from("global_vehicle_models")
+        .select(`
+          id,
+          brand_id,
+          name,
+          default_category_id,
+          is_active
+        `)
+        .range(from, to);
+      
+      if (error) break;
+      
+      if (batch && batch.length > 0) {
+        allModels.push(...batch);
+        page++;
+      }
+      
+      if (!batch || batch.length < pageSize) {
+        hasMore = false;
+      }
+    }
+
+    // Recupera marche e categorie
+    const { data: brands } = await supabase
+      .from("global_vehicle_brands")
+      .select("id, name");
+    
+    const { data: categories } = await supabase
+      .from("global_vehicle_categories")
+      .select("id, name");
+
+    const brandMap = new Map(brands?.map(b => [b.id, b.name]));
+    const categoryMap = new Map(categories?.map(c => [c.id, c.name]));
+
+    // Prepara CSV
+    const csvRows = [
+      ["brand_name", "model_name", "category_name", "is_active"].join(",")
+    ];
+
+    for (const model of allModels) {
+      const brandName = brandMap.get(model.brand_id) || "";
+      const categoryName = categoryMap.get(model.default_category_id) || "";
+      
+      csvRows.push([
+        `"${brandName}"`,
+        `"${model.name}"`,
+        `"${categoryName}"`,
+        model.is_active ? "true" : "false"
+      ].join(","));
+    }
+
+    const csvContent = csvRows.join("\n");
+    
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", "attachment; filename=global_models_export.csv");
+    
+    return res.send(csvContent);
+    
+  } catch (err: any) {
+    console.error("❌ ERRORE exportGlobalModelsToCSVController:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}

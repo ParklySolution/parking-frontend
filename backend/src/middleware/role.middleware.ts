@@ -20,3 +20,47 @@ export async function requireSuperAdmin(req: Request, res: Response, next: NextF
     return res.status(500).json({ error: "Errore verifica ruolo" });
   }
 }
+
+// 🔥 MIDDLEWARE PER TENANT ADMIN
+export async function requireTenantAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = (req as any).user;
+    
+    if (!user) {
+      return res.status(401).json({ error: "Utente non autenticato" });
+    }
+    
+    const role = user.user_metadata?.role || user.app_metadata?.role;
+    
+    if (role !== "tenant_admin") {
+      return res.status(403).json({ error: "Accesso negato: richiesto ruolo tenant_admin" });
+    }
+    
+    next();
+  } catch (err) {
+    console.error("Role error:", err);
+    return res.status(500).json({ error: "Errore verifica ruolo" });
+  }
+}
+
+// 🔥 MIDDLEWARE PER ADMIN GENERICO (super_admin o tenant_admin)
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = (req as any).user;
+    
+    if (!user) {
+      return res.status(401).json({ error: "Utente non autenticato" });
+    }
+    
+    const role = user.user_metadata?.role || user.app_metadata?.role;
+    
+    if (role !== "super_admin" && role !== "tenant_admin") {
+      return res.status(403).json({ error: "Accesso negato: richiesto ruolo admin" });
+    }
+    
+    next();
+  } catch (err) {
+    console.error("Role error:", err);
+    return res.status(500).json({ error: "Errore verifica ruolo" });
+  }
+}

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
+import { requireTenantAdmin } from "../middleware/role.middleware.js";
 import { 
   getTenantBrandsController,
   createTenantBrandController,
@@ -10,7 +11,8 @@ import {
   getTenantModelsController,
   createTenantModelController,
   toggleTenantModelController,
-  updateModelCategoryController  // 🔥 NUOVO IMPORT
+  updateModelCategoryController,
+  inviteOperatorController  // 🔥 NUOVO IMPORT PER INVITARE OPERATORI
 } from "../controllers/tenant.controller.js";
 
 const router = Router();
@@ -57,8 +59,14 @@ router.post("/:tenantId/models", createTenantModelController);
 // PUT /api/tenant/:tenantId/models/:modelId/toggle
 router.put("/:tenantId/models/:modelId/toggle", toggleTenantModelController);
 
-// 🔥 NUOVA ROUTE: Aggiorna la categoria di un modello
 // PUT /api/tenant/:tenantId/models/:modelId/category
 router.put("/:tenantId/models/:modelId/category", updateModelCategoryController);
+
+// ============================================================================
+// TENANT OPERATOR INVITE
+// ============================================================================
+
+// POST /api/tenant/:tenantId/invite-operator
+router.post("/:tenantId/invite-operator", requireTenantAdmin, inviteOperatorController);
 
 export default router;

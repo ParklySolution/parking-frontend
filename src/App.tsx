@@ -38,7 +38,7 @@ import RequireAdmin from "@/middleware/RequireAdmin";
 ====================================================== */
 import ForgotPassword from "@/pages/Auth/ForgotPassword";
 import ResetPassword from "@/pages/Auth/ResetPassword";
-import UpdatePassword from "@/pages/Auth/UpdatePassword";  // 🔥 AGGIUNTO
+import UpdatePassword from "@/pages/Auth/UpdatePassword";
 
 /* ======================================================
    SUPER ADMIN PANEL
@@ -61,7 +61,7 @@ import GlobalCategoriesPage from "@/pages/SuperAdmin/GlobalCategoriesPage";
 import ModelsSyncPage from "@/pages/SuperAdmin/ModelsSyncPage";
 import GlobalModelsPage from "@/pages/SuperAdmin/GlobalModelsPage";
 
-/* ⭐ NEW: COMPANIES */
+/* COMPANIES */
 import CompaniesList from "@/pages/SuperAdmin/CompaniesList";
 import CompanyDetail from "@/pages/SuperAdmin/CompanyDetail";
 import CreateTenantFromCompany from "@/pages/SuperAdmin/CreateTenantFromCompany";
@@ -69,6 +69,8 @@ import CreateTenantFromCompany from "@/pages/SuperAdmin/CreateTenantFromCompany"
 /* ======================================================
    TENANT PANEL (impersonation)
 ====================================================== */
+// 🔥 CORREZIONE QUI - percorso corretto
+import TenantLayout from "./pages/Tenant/layout/TenantLayout";
 import RequireTenantSession from "@/middleware/RequireTenantSession";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import ImpersonateCallback from "@/pages/Auth/ImpersonateCallback";
@@ -131,12 +133,8 @@ function RoleRedirect() {
 }
 
 function App() {
-  /* ======================================================
-     ⭐ SESSION GATE — FIX DEFINITIVO PER I 401
-  ====================================================== */
   const [sessionReady, setSessionReady] = useState(false);
 
-  // 1️⃣ Primo hook: carica la sessione
   useEffect(() => {
     supabase.auth.getSession().then(() => {
       setSessionReady(true);
@@ -149,7 +147,6 @@ function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // 2️⃣ Secondo hook: debug sessione
   useEffect(() => {
     supabase.auth.getSession().then((res) => {
       const session = res.data.session;
@@ -163,25 +160,21 @@ function App() {
     });
   }, []);
 
-  // 3️⃣ SOLO ORA puoi fare il return condizionale
   if (!sessionReady) {
     return <div>Caricamento sessione...</div>;
   }
 
-  /* ======================================================
-     ROUTER
-  ====================================================== */
   return (
     <BrowserRouter>
       <ImpersonationBanner />
 
       <Routes>
         {/* AUTH */}
-        <Route path="/create-super-admin" element={<CreateSuperAdmin />} />
-        <Route path="/auth/forgot" element={<ForgotPassword />} />
-        <Route path="/auth/reset" element={<ResetPassword />} />
-        <Route path="/auth/update-password" element={<UpdatePassword />} />  {/* 🔥 ROTTA AGGIUNTA */}
-        <Route path="/accept-invite" element={<AcceptInvite />} />
+<Route path="/create-super-admin" element={<CreateSuperAdmin />} />
+<Route path="/auth/forgot" element={<ForgotPassword />} />
+<Route path="/auth/reset-password" element={<ResetPassword />} />  {/* 🔥 MODIFICATO */}
+<Route path="/auth/update-password" element={<UpdatePassword />} />
+<Route path="/accept-invite" element={<AcceptInvite />} />
 
         {/* OPERATORE */}
         <Route path="/" element={<RoleRedirect />} />
@@ -270,196 +263,45 @@ function App() {
           <Route path="global-models" element={<GlobalModelsPage />} />
         </Route>
 
-        {/* TENANT PANEL */}
+        {/* ======================================================
+            TENANT PANEL - USANDO TENANT LAYOUT
+        ====================================================== */}
         <Route
           path="/tenant/:tenantId"
-          element={<Navigate to="dashboard" replace />}
-        />
-
-        <Route
-          path="/tenant/:tenantId/dashboard"
           element={
             <RequireTenantSession>
-              <TenantDashboard />
+              <TenantLayout />
             </RequireTenantSession>
           }
-        />
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<TenantDashboard />} />
+          <Route path="ingressi" element={<TenantIngressi />} />
+          <Route path="uscite" element={<TenantUscite />} />
+          <Route path="abbonamenti" element={<TenantAbbonamenti />} />
+          <Route path="abbonati" element={<TenantAbbonati />} />
+          <Route path="clienti" element={<TenantClienti />} />
+          <Route path="contracts-management" element={<ContractsManagement />} />
+          <Route path="subscription-renewal" element={<SubscriptionRenewal />} />
+          <Route path="contracts" element={<OperatorContracts />} />
 
-        <Route
-          path="/tenant/:tenantId/ingressi"
-          element={
-            <RequireTenantSession>
-              <TenantIngressi />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/uscite"
-          element={
-            <RequireTenantSession>
-              <TenantUscite />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/abbonamenti"
-          element={
-            <RequireTenantSession>
-              <TenantAbbonamenti />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/abbonati"
-          element={
-            <RequireTenantSession>
-              <TenantAbbonati />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/clienti"
-          element={
-            <RequireTenantSession>
-              <TenantClienti />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/contracts-management"
-          element={
-            <RequireTenantSession>
-              <ContractsManagement />
-            </RequireTenantSession>
-          }
-        />
-
-        {/* Tenant Management */}
-        <Route
-          path="/tenant/:tenantId/management/brands"
-          element={
-            <RequireTenantSession>
-              <TenantBrands />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/categories"
-          element={
-            <RequireTenantSession>
-              <TenantCategories />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/models"
-          element={
-            <RequireTenantSession>
-              <TenantModels />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/price-lists"
-          element={
-            <RequireTenantSession>
-              <TenantPriceLists />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/tolerances"
-          element={
-            <RequireTenantSession>
-              <TenantTolerances />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/wash-services"
-          element={
-            <RequireTenantSession>
-              <WashServices />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/conventions"
-          element={
-            <RequireTenantSession>
-              <ConventionsList />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/wash-bonus"
-          element={
-            <RequireTenantSession>
-              <WashBonusList />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/contract-templates"
-          element={
-            <RequireTenantSession>
-              <ContractTemplatesList />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/company-info"
-          element={
-            <RequireTenantSession>
-              <CompanyInfo />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/contract-terms"
-          element={
-            <RequireTenantSession>
-              <ContractTermsList />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/payment-methods"
-          element={
-            <RequireTenantSession>
-              <PaymentMethodsManagement />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/management/users"
-          element={
-            <RequireTenantSession>
-              <TenantUsers />
-            </RequireTenantSession>
-          }
-        />
+          <Route path="management/brands" element={<TenantBrands />} />
+          <Route path="management/categories" element={<TenantCategories />} />
+          <Route path="management/models" element={<TenantModels />} />
+          <Route path="management/price-lists" element={<TenantPriceLists />} />
+          <Route path="management/tolerances" element={<TenantTolerances />} />
+          <Route path="management/wash-services" element={<WashServices />} />
+          <Route path="management/conventions" element={<ConventionsList />} />
+          <Route path="management/wash-bonus" element={<WashBonusList />} />
+          <Route path="management/contract-templates" element={<ContractTemplatesList />} />
+          <Route path="management/company-info" element={<CompanyInfo />} />
+          <Route path="management/contract-terms" element={<ContractTermsList />} />
+          <Route path="management/payment-methods" element={<PaymentMethodsManagement />} />
+          <Route path="management/users" element={<TenantUsers />} />
+        </Route>
 
         <Route path="/auth/impersonate-callback" element={<ImpersonateCallback />} />
 
-        {/* FALLBACK */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

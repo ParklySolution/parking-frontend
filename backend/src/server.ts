@@ -7,7 +7,8 @@ dotenv.config();
 
 // Import routes
 import superadminRoutes from "./routes/superadmin.routes.js";
-import tenantRoutes from "./routes/tenant.routes.js"; // 🔥 AGGIUNTO
+import tenantRoutes from "./routes/tenant.routes.js";
+import authRoutes from "./routes/auth.routes.js"; // 🔥 NUOVA ROUTE PER AUTH
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -30,7 +31,8 @@ app.get("/health", (_req, res) => {
 
 // Routes - NOTA: aggiunto /api/ prefix
 app.use("/api/superadmin", superadminRoutes);
-app.use("/api/tenant", tenantRoutes); // 🔥 NUOVA ROUTE PER TENANT
+app.use("/api/tenant", tenantRoutes);
+app.use("/api/auth", authRoutes); // 🔥 NUOVA ROUTE PER AUTH (forgot/reset password)
 
 // 404 handler
 app.use((_req, res) => {
@@ -52,4 +54,5 @@ app.listen(PORT, () => {
   console.log(`📋 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 Routes: /api/superadmin/tenants/:tenantId/create-tenant-admin`);
   console.log(`🔗 Tenant routes: /api/tenant/:tenantId/brands`);
+  console.log(`🔗 Auth routes: /api/auth/forgot-password, /api/auth/reset-password`);
 });

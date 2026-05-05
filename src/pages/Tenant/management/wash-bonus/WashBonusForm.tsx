@@ -19,6 +19,13 @@ export default function WashBonusForm({ tenantId, rule, services, categories, on
     max_uses_per_day: rule?.max_uses_per_day || "",
     valid_days_of_week: rule?.valid_days_of_week || [],
     is_active: rule?.is_active ?? true,
+    // 🔥 NUOVI CAMPI PER REGOLE RICORRENTI
+    is_recurring: rule?.is_recurring || false,
+    recurring_threshold: rule?.recurring_threshold || 10,
+    recurring_reward_type: rule?.recurring_reward_type || "free_wash",
+    recurring_reward_value: rule?.recurring_reward_value || 1,
+    trigger_service_id: rule?.trigger_service_id || "",
+    reward_service_id: rule?.reward_service_id || "",
   });
   
   const [saving, setSaving] = useState(false);
@@ -66,63 +73,116 @@ export default function WashBonusForm({ tenantId, rule, services, categories, on
   }
 
   async function handleSubmit(e: React.FormEvent) {
-  e.preventDefault();
-  setSaving(true);
-  setError(null);
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
 
-  if (!form.wash_service_id) {
-    setError("Seleziona un servizio lavaggio");
-    setSaving(false);
-    return;
-  }
+    if (!form.wash_service_id) {
+      setError("Seleziona un servizio lavaggio");
+      setSaving(false);
+      return;
+    }
 
-  const payload = {
-    tenant_id: tenantId,
-    wash_service_id: form.wash_service_id,
-    bonus_type: form.bonus_type,
-    bonus_value: Number(form.bonus_value),
-    min_wash_amount: form.min_wash_amount ? Number(form.min_wash_amount) : null,
-    applicable_categories: form.applicable_categories.length ? form.applicable_categories : null,
-    max_uses_per_day: form.max_uses_per_day ? Number(form.max_uses_per_day) : null,
-    valid_days_of_week: form.valid_days_of_week.length ? form.valid_days_of_week : null,
-    is_active: form.is_active,
-  };
+    let payload: any;
 
-  console.log("📦 PAYLOAD BONUS:", payload);
+    if (form.is_recurring) {
+      if (!form.trigger_service_id) {
+        setError("Seleziona il servizio che fa maturare il bonus");
+        setSaving(false);
+        return;
+      }
+      if (!form.reward_service_id) {
+        setError("Seleziona il servizio omaggiato");
+        setSaving(false);
+        return;
+      }
+      if (!form.recurring_threshold || form.recurring_threshold < 2) {
+        setError("Il numero di lavaggi deve essere almeno 2");
+        setSaving(false);
+        return;
+      }
 
-  try {
-    let result;
-    
-    if (rule?.id) {
-      // Se stiamo modificando una regola esistente, usa UPDATE
-      result = await supabase
-        .from("wash_parking_bonus_rules")
-        .update(payload)
-        .eq("id", rule.id);
+      payload = {
+        tenant_id: tenantId,
+        wash_service_id: form.wash_service_id,
+        bonus_type: 'recurring_wash',
+        bonus_value: 0,
+        is_recurring: true,
+        recurring_threshold: Number(form.recurring_threshold),
+        recurring_reward_type: form.recurring_reward_type,
+        recurring_reward_value: Number(form.recurring_reward_value),
+        trigger_service_id: form.trigger_service_id,
+        reward_service_id: form.reward_service_id,
+        min_wash_amount: form.min_wash_amount ? Number(form.min_wash_amount) : null,
+        applicable_categories: form.applicable_categories.length ? form.applicable_categories : null,
+        max_uses_per_day: form.max_uses_per_day ? Number(form.max_uses_per_day) : null,
+        valid_days_of_week: form.valid_days_of_week.length ? form.valid_days_of_week : null,
+        is_active: form.is_active,
+      };
     } else {
-      // Per una nuova regola, usa UPSERT con il vincolo di unicità
-      // Supabase userà automaticamente il vincolo UNIQUE che abbiamo creato
-      result = await supabase
-        .from("wash_parking_bonus_rules")
-        .upsert(payload, { 
-          onConflict: 'tenant_id, wash_service_id, bonus_type',
-          ignoreDuplicates: false 
-        });
+      payload = {
+        tenant_id: tenantId,
+        wash_service_id: form.wash_service_id,
+        bonus_type: form.bonus_type,
+        bonus_value: Number(form.bonus_value),
+        is_recurring: false,
+        recurring_threshold: null,
+        recurring_reward_type: null,
+        recurring_reward_value: null,
+        trigger_service_id: null,
+        reward_service_id: null,
+        min_wash_amount: form.min_wash_amount ? Number(form.min_wash_amount) : null,
+        applicable_categories: form.applicable_categories.length ? form.applicable_categories : null,
+        max_uses_per_day: form.max_uses_per_day ? Number(form.max_uses_per_day) : null,
+        valid_days_of_week: form.valid_days_of_week.length ? form.valid_days_of_week : null,
+        is_active: form.is_active,
+      };
     }
 
-    if (result.error) {
-      console.error("❌ Errore DB:", result.error);
-      throw result.error;
+    console.log("📦 PAYLOAD BONUS:", payload);
+
+    try {
+      let result;
+      
+      if (rule?.id) {
+        result = await supabase
+          .from("wash_parking_bonus_rules")
+          .update(payload)
+          .eq("id", rule.id);
+      } else {
+        result = await supabase
+          .from("wash_parking_bonus_rules")
+          .upsert(payload, { 
+            onConflict: 'tenant_id, wash_service_id, bonus_type',
+            ignoreDuplicates: false 
+          });
+      }
+
+      if (result.error) {
+        console.error("❌ Errore DB:", result.error);
+        throw result.error;
+      }
+      
+      onClose();
+    } catch (err: any) {
+      console.error("❌ Errore:", err);
+      setError(err.message);
+    } finally {
+      setSaving(false);
     }
-    
-    onClose();
-  } catch (err: any) {
-    console.error("❌ Errore:", err);
-    setError(err.message);
-  } finally {
-    setSaving(false);
   }
-}
+
+  function getTriggerServiceName(): string {
+    if (!form.trigger_service_id) return '';
+    const service = services.find(s => s.id === form.trigger_service_id);
+    return service?.name || '';
+  }
+
+  function getRewardServiceName(): string {
+    if (!form.reward_service_id) return '';
+    const service = services.find(s => s.id === form.reward_service_id);
+    return service?.name || '';
+  }
 
   return (
     <div style={{
@@ -164,7 +224,7 @@ export default function WashBonusForm({ tenantId, rule, services, categories, on
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* SERVIZIO LAVAGGIO */}
+          {/* SERVIZIO LAVAGGIO (principale) */}
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
               Servizio lavaggio *
@@ -187,60 +247,212 @@ export default function WashBonusForm({ tenantId, rule, services, categories, on
                 <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
               ))}
             </select>
+            <small style={{ color: "#6b7280" }}>Il servizio a cui si applica questa regola</small>
           </div>
 
-          {/* TIPO BONUS */}
-          <div style={{ marginBottom: "15px" }}>
-            <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
-              Tipo bonus *
+          {/* 🔥 TIPO REGOLA: STANDARD o RICORRENTE */}
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+              <input
+                type="checkbox"
+                checked={form.is_recurring}
+                onChange={(e) => handleChange("is_recurring", e.target.checked)}
+              />
+              <span style={{ color: "#fff", fontWeight: 500 }}>🎯 Regola ricorrente (es. "Ogni X lavaggi")</span>
             </label>
-            <select
-              value={form.bonus_type}
-              onChange={(e) => handleChange("bonus_type", e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: "6px",
-                border: "1px solid #333",
-                background: "#0d1117",
-                color: "#fff"
-              }}
-            >
-              <option value="free_hours">Ore parcheggio gratuite</option>
-              <option value="free_parking">Parcheggio gratuito (24h)</option>
-              <option value="discount_percentage">Sconto percentuale (%)</option>
-              <option value="fixed_discount">Sconto fisso (€)</option>
-            </select>
+            <small style={{ color: "#6b7280" }}>
+              Attiva questa opzione per creare una fidelity del tipo "Ogni X lavaggi → Y premio"
+            </small>
           </div>
 
-          {/* VALORE BONUS */}
-          <div style={{ marginBottom: "15px" }}>
-            <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
-              {form.bonus_type === 'free_hours' && 'Ore gratuite *'}
-              {form.bonus_type === 'free_parking' && 'Valore (fisso 24h)'}
-              {form.bonus_type === 'discount_percentage' && 'Percentuale sconto (%) *'}
-              {form.bonus_type === 'fixed_discount' && 'Importo sconto (€) *'}
-            </label>
-            <input
-              type="number"
-              step={form.bonus_type === 'discount_percentage' ? '1' : '0.5'}
-              min="0"
-              value={form.bonus_value}
-              onChange={(e) => handleChange("bonus_value", e.target.value)}
-              required
-              disabled={form.bonus_type === 'free_parking'}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: "6px",
-                border: "1px solid #333",
-                background: form.bonus_type === 'free_parking' ? "#2d2d3a" : "#0d1117",
-                color: "#fff"
-              }}
-            />
-          </div>
+          {form.is_recurring ? (
+            /* 🔥 FORM REGOLE RICORRENTI */
+            <>
+              {/* SERVIZIO TRIGGER */}
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
+                  Servizio che fa maturare il bonus *
+                </label>
+                <select
+                  value={form.trigger_service_id}
+                  onChange={(e) => handleChange("trigger_service_id", e.target.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #333",
+                    background: "#0d1117",
+                    color: "#fff"
+                  }}
+                >
+                  <option value="">Seleziona servizio</option>
+                  {services.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                  ))}
+                </select>
+                <small style={{ color: "#6b7280" }}>
+                  Il cliente accumula con QUESTO servizio
+                </small>
+              </div>
 
-          {/* MINIMO LAVAGGI */}
+              {/* SOGLIA LAVAGGI */}
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
+                  Ogni quanti lavaggi *
+                </label>
+                <input
+                  type="number"
+                  min="2"
+                  step="1"
+                  value={form.recurring_threshold}
+                  onChange={(e) => handleChange("recurring_threshold", e.target.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #333",
+                    background: "#0d1117",
+                    color: "#fff"
+                  }}
+                />
+                <small style={{ color: "#6b7280" }}>Es. 10 per "ogni 10 lavaggi"</small>
+              </div>
+
+              {/* SERVIZIO OMAGGIATO */}
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
+                  Servizio omaggiato *
+                </label>
+                <select
+                  value={form.reward_service_id}
+                  onChange={(e) => handleChange("reward_service_id", e.target.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #333",
+                    background: "#0d1117",
+                    color: "#fff"
+                  }}
+                >
+                  <option value="">Seleziona servizio</option>
+                  {services.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                  ))}
+                </select>
+                <small style={{ color: "#6b7280" }}>
+                  QUESTO servizio viene omaggiato al raggiungimento della soglia
+                </small>
+              </div>
+
+              {/* TIPO PREMIO */}
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
+                  Tipo premio *
+                </label>
+                <select
+                  value={form.recurring_reward_type}
+                  onChange={(e) => handleChange("recurring_reward_type", e.target.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #333",
+                    background: "#0d1117",
+                    color: "#fff"
+                  }}
+                >
+                  <option value="free_wash">🧼 Lavaggio gratis</option>
+                  <option value="discount_percentage">💰 Sconto percentuale (%)</option>
+                  <option value="fixed_discount">💶 Sconto fisso (€)</option>
+                </select>
+              </div>
+
+              {/* VALORE PREMIO */}
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
+                  Valore premio *
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={form.recurring_reward_value}
+                  onChange={(e) => handleChange("recurring_reward_value", e.target.value)}
+                  required
+                  placeholder={form.recurring_reward_type === 'free_wash' ? "1 = 1 lavaggio gratis" : "Es. 20 = 20% o 20€"}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #333",
+                    background: "#0d1117",
+                    color: "#fff"
+                  }}
+                />
+                <small style={{ color: "#6b7280" }}>
+                  {form.recurring_reward_type === 'free_wash' && "Inserisci 1 per 1 lavaggio gratis"}
+                  {form.recurring_reward_type === 'discount_percentage' && "Inserisci la percentuale (es. 20 = 20%)"}
+                  {form.recurring_reward_type === 'fixed_discount' && "Inserisci l'importo in euro"}
+                </small>
+              </div>
+            </>
+          ) : (
+            /* FORM STANDARD (esistente) */
+            <>
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
+                  Tipo bonus *
+                </label>
+                <select
+                  value={form.bonus_type}
+                  onChange={(e) => handleChange("bonus_type", e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #333",
+                    background: "#0d1117",
+                    color: "#fff"
+                  }}
+                >
+                  <option value="free_hours">Ore parcheggio gratuite</option>
+                  <option value="free_parking">Parcheggio gratuito (24h)</option>
+                  <option value="discount_percentage">Sconto percentuale (%)</option>
+                  <option value="fixed_discount">Sconto fisso (€)</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
+                  Valore bonus *
+                </label>
+                <input
+                  type="number"
+                  step={form.bonus_type === 'discount_percentage' ? '1' : '0.5'}
+                  min="0"
+                  value={form.bonus_value}
+                  onChange={(e) => handleChange("bonus_value", e.target.value)}
+                  required
+                  disabled={form.bonus_type === 'free_parking'}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #333",
+                    background: form.bonus_type === 'free_parking' ? "#2d2d3a" : "#0d1117",
+                    color: "#fff"
+                  }}
+                />
+              </div>
+            </>
+          )}
+
+          {/* MINIMO LAVAGGI (opzionale) */}
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px", color: "#9ca3af" }}>
               Numero minimo lavaggi (opzionale)
@@ -261,6 +473,7 @@ export default function WashBonusForm({ tenantId, rule, services, categories, on
               }}
               placeholder="Lascia vuoto per nessun minimo"
             />
+            <small style={{ color: "#6b7280" }}>Il cliente deve fare almeno questo numero di lavaggi per ottenere il bonus</small>
           </div>
 
           {/* MAX UTILIZZI GIORNALIERI */}

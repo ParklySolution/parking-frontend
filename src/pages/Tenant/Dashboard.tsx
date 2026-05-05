@@ -1,15 +1,11 @@
-import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { useEffect, useState } from "react";
 import { supabase } from "@/services/supabase";
 import { useNavigate } from "react-router-dom";
-import TenantLayout from "./layout/TenantLayout";
-import { FaUsers, FaTicketAlt, FaCar, FaChartLine } from "react-icons/fa";
-import { api } from "@/services/api.service";
+import { FaUsers, FaTicketAlt, FaCar, FaChartLine, FaEuroSign } from "react-icons/fa";
 
 /* ======================================================
-   STATI E INTERFACCE
+   INTERFACCE
    ====================================================== */
-
 interface DashboardStats {
   todayEntries: number;
   todayExits: number;
@@ -17,317 +13,206 @@ interface DashboardStats {
   activeSessions: number;
   occupancyRate: number;
   revenue: number;
+  totalCustomers: number;
 }
 
 export default function TenantDashboard() {
   const navigate = useNavigate();
-
+  
   const [tenantId, setTenantId] = useState<string | null>(null);
-  const [companyTenants, setCompanyTenants] = useState<any[]>([]);
-  const [isSelectingTenant, setIsSelectingTenant] = useState(true);
-
+  const [tenantName, setTenantName] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [stats, setStats] = useState<DashboardStats>({
     todayEntries: 0,
     todayExits: 0,
     activeSubscriptions: 0,
     activeSessions: 0,
     occupancyRate: 0,
-    revenue: 0
+    revenue: 0,
+    totalCustomers: 0
   });
 
-  const { flags, loading: flagsLoading } = useFeatureFlags(tenantId || "");
-
   /* ======================================================
-     1️⃣ CARICAMENTO COMPANY → TENANTS (VIA BACKEND)
+     1️⃣ RECUPERO TENANT ID (Dagli User Metadata)
      ====================================================== */
-
   useEffect(() => {
-    async function load() {
+    async function getTenantId() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        const userId = session?.user?.id;
-
-        if (!userId) {
-          setLoading(false);
-          return;
+        const userMetadata = session?.user?.user_metadata;
+        
+        if (userMetadata?.tenant_id) {
+          setTenantId(userMetadata.tenant_id);
+          setTenantName(userMetadata.full_name || "Garage");
         }
-
-        // 🔥 OTTIENI IL PROFILO DAL BACKEND
-        const { profile } = await api.getProfile(userId);
-
-        if (!profile?.company_id) {
-          console.error("❌ Nessuna company associata all'utente");
-          setLoading(false);
-          return;
-        }
-
-        // 🔥 RECUPERA I TENANT DA admin_tenants (NON tenants)
-        const { data: tenants, error } = await supabase
-          .from("admin_tenants")
-          .select("id, name, address, city")
-          .eq("company_id", profile.company_id)
-          .order("created_at", { ascending: true });
-
-        if (error) {
-          console.error("❌ Errore caricamento tenants:", error);
-        }
-
-        setCompanyTenants(tenants || []);
-
-        if (tenants && tenants.length === 1) {
-          setTenantId(tenants[0].id);
-          setIsSelectingTenant(false);
-        } else {
-          setIsSelectingTenant(true);
-        }
-
       } catch (err) {
-        console.error("Errore caricamento company/tenants:", err);
+        console.error("❌ Errore ricerca tenant:", err);
       } finally {
         setLoading(false);
       }
     }
-
-    load();
+    getTenantId();
   }, []);
 
   /* ======================================================
-     2️⃣ LOADING
+     2️⃣ CARICAMENTO STATISTICHE
      ====================================================== */
+  const fetchStats = async (id: string) => {
+    if (!id) return;
+    setStatsLoading(true);
+    
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const startOfDay = `${today}T00:00:00.000Z`;
+      const endOfDay = `${today}T23:59:59.999Z`;
+      
+      const [entries, exits, active, subs, customers, revenueRes] = await Promise.all([
+        supabase.from("parking_sessions").select("*", { count: 'exact', head: true }).eq("tenant_id", id).gte("entry_time", startOfDay).lte("entry_time", endOfDay),
+        supabase.from("parking_sessions").select("*", { count: 'exact', head: true }).eq("tenant_id", id).gte("exit_time", startOfDay).lte("exit_time", endOfDay),
+        supabase.from("parking_sessions").select("*", { count: 'exact', head: true }).eq("tenant_id", id).is("exit_time", null),
+        supabase.from("subscriptions").select("*", { count: 'exact', head: true }).eq("tenant_id", id).eq("is_active", true),
+        supabase.from("customers").select("*", { count: 'exact', head: true }).eq("tenant_id", id),
+        supabase.from("parking_sessions").select("final_amount").eq("tenant_id", id).gte("exit_time", startOfDay).lte("exit_time", endOfDay).eq("status", "completed")
+      ]);
 
-  if (loading || flagsLoading) {
-    return (
-      <TenantLayout>
-        <div style={loadingContainer}>
-          <div style={spinner}></div>
-          <p style={{ color: "#9ca3af", marginTop: "16px" }}>Caricamento...</p>
-        </div>
-      </TenantLayout>
-    );
-  }
+      const revTotal = revenueRes.data?.reduce((sum, s) => sum + (Number(s.final_amount) || 0), 0) || 0;
+      const activeCount = active.count || 0;
+
+      setStats({
+        todayEntries: entries.count || 0,
+        todayExits: exits.count || 0,
+        activeSubscriptions: subs.count || 0,
+        activeSessions: activeCount,
+        occupancyRate: activeCount > 0 ? Math.min(Math.round((activeCount / 50) * 100), 100) : 0,
+        revenue: revTotal,
+        totalCustomers: customers.count || 0
+      });
+    } catch (err) {
+      console.error("❌ Errore fetchStats:", err);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tenantId) {
+      fetchStats(tenantId);
+      const interval = setInterval(() => fetchStats(tenantId), 30000);
+      return () => clearInterval(interval);
+    }
+  }, [tenantId]);
 
   /* ======================================================
-     3️⃣ SELEZIONE GARAGE
+     3️⃣ RENDERING (Puro, senza TenantLayout interno)
      ====================================================== */
 
-  if (isSelectingTenant) {
+  if (loading) {
     return (
-      <TenantLayout>
-        <div style={{ marginBottom: "30px" }}>
-          <h1 style={pageTitle}>I tuoi garage</h1>
-          <p style={pageSubtitle}>Seleziona il garage che vuoi gestire</p>
-        </div>
-
-        {companyTenants.length === 0 && (
-          <div style={errorContainer}>
-            <span style={{ fontSize: "48px", marginBottom: "16px" }}>🏗️</span>
-            <h2 style={{ color: "#fff", marginBottom: "8px" }}>
-              Nessun garage configurato
-            </h2>
-            <p style={{ color: "#9ca3af" }}>
-              Contatta il Super Admin per aggiungere un garage.
-            </p>
-          </div>
-        )}
-
-        {companyTenants.map((t) => (
-          <div
-            key={t.id}
-            style={{
-              background: "#111418",
-              padding: "16px",
-              borderRadius: "10px",
-              marginBottom: "12px",
-              border: "1px solid rgba(255,255,255,0.08)",
-              cursor: "pointer",
-            }}
-            onClick={() => {
-              setTenantId(t.id);
-              setIsSelectingTenant(false);
-            }}
-          >
-            <div style={{ color: "#fff", fontSize: "18px", fontWeight: 600 }}>
-              {t.name}
-            </div>
-            <div style={{ color: "#9ca3af", fontSize: "14px" }}>
-              {t.address}, {t.city}
-            </div>
-          </div>
-        ))}
-      </TenantLayout>
-    );
-  }
-
-  /* ======================================================
-     4️⃣ DASHBOARD DEL GARAGE
-     ====================================================== */
-
-  if (!tenantId) {
-    return (
-      <TenantLayout>
-        <div style={errorContainer}>
-          <span style={{ fontSize: "48px", marginBottom: "16px" }}>⚠️</span>
-          <h2 style={{ color: "#ff4444", marginBottom: "8px" }}>Errore: Tenant non identificato</h2>
-          <p style={{ color: "#9ca3af" }}>Impossibile caricare la dashboard.</p>
-        </div>
-      </TenantLayout>
+      <div style={styles.loadingContainer}>
+        <div style={styles.spinner}></div>
+        <p style={{ color: "#9ca3af", marginTop: "16px" }}>Inizializzazione dashboard...</p>
+      </div>
     );
   }
 
   return (
-    <TenantLayout>
-      {/* Header */}
-      <div style={headerStyle}>
+    <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
+      
+      {/* Header Interno della Pagina */}
+      <div style={styles.headerStyle}>
         <div>
-          <h1 style={pageTitle}>Dashboard Garage</h1>
-          <p style={pageSubtitle}>Gestisci il tuo garage</p>
+          <h1 style={styles.pageTitle}>🏢 Benvenuto, {tenantName}</h1>
+          <p style={styles.pageSubtitle}>Monitoraggio attività in tempo reale</p>
         </div>
-        <div style={dateBadge}>
-          {new Date().toLocaleDateString("it-IT", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })}
+        <div style={styles.dateBadge}>
+          📅 {new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}
         </div>
       </div>
 
-      {/* Navigazione rapida */}
-      <div style={quickNavStyle}>
-        <button onClick={() => navigate(`/tenant/${tenantId}/abbonati`)} style={navButtonStyle}>
-          <FaUsers style={{ fontSize: "20px" }} />
-          <span>Gestione Abbonati</span>
-        </button>
-
-        <button onClick={() => navigate(`/tenant/${tenantId}/clienti`)} style={navButtonStyle}>
-          <FaCar style={{ fontSize: "20px" }} />
-          <span>Clienti</span>
-        </button>
-
-        <button onClick={() => navigate(`/tenant/${tenantId}/ingressi`)} style={navButtonStyle}>
-          <FaTicketAlt style={{ fontSize: "20px" }} />
-          <span>Ingressi</span>
-        </button>
-
-        <button onClick={() => navigate(`/tenant/${tenantId}/management/price-lists`)} style={navButtonStyle}>
-          <FaChartLine style={{ fontSize: "20px" }} />
-          <span>Tariffe</span>
-        </button>
+      {/* Navigazione Rapida */}
+      <div style={styles.quickNavStyle}>
+        <button onClick={() => navigate(`/tenant/${tenantId}/ingressi`)} style={styles.navButtonStyle}><FaCar size={18} /> Ingressi</button>
+        <button onClick={() => navigate(`/tenant/${tenantId}/uscite`)} style={styles.navButtonStyle}><FaTicketAlt size={18} /> Uscite</button>
+        <button onClick={() => navigate(`/tenant/${tenantId}/clienti`)} style={styles.navButtonStyle}><FaUsers size={18} /> Clienti</button>
+        <button onClick={() => navigate(`/tenant/${tenantId}/abbonati`)} style={styles.navButtonStyle}><FaChartLine size={18} /> Abbonati</button>
       </div>
 
-      {/* KPI */}
-      <div style={kpiGrid}>
-        <StatCard label="Ingressi oggi" value={stats.todayEntries} icon="🚗" trend={+12} />
-        <StatCard label="Uscite oggi" value={stats.todayExits} icon="💰" trend={+8} />
-        <StatCard label="Sessioni attive" value={stats.activeSessions} icon="⏱️" trend={-3} />
-        <StatCard label="Abbonamenti attivi" value={stats.activeSubscriptions} icon="📋" trend={+5} />
-      </div>
-
-      {/* Seconda riga */}
-      <div style={secondaryGrid}>
-        <div style={chartCard}>
-          <div style={chartHeader}>
-            <h3 style={chartTitle}>Occupazione parcheggio</h3>
-            <span style={chartValue}>{stats.occupancyRate}%</span>
-          </div>
-          <div style={progressBarContainer}>
-            <div style={{ ...progressBarFill, width: `${stats.occupancyRate}%` }} />
-          </div>
-          <p style={chartNote}>48 posti disponibili su 120</p>
+      {/* Griglia KPI */}
+      <div style={styles.kpiGrid}>
+        <div style={styles.cardStyle}>
+          <div style={styles.cardIcon}>🚗</div>
+          <div style={styles.cardValue}>{stats.todayEntries}</div>
+          <div style={styles.cardLabel}>Ingressi oggi</div>
         </div>
-
-        <div style={revenueCard}>
-          <h3 style={chartTitle}>Ricavi oggi</h3>
-          <div style={revenueValue}>€ {stats.revenue.toFixed(2)}</div>
-          <p style={revenueNote}>+15% rispetto a ieri</p>
+        <div style={styles.cardStyle}>
+          <div style={styles.cardIcon}>💰</div>
+          <div style={styles.cardValue}>{stats.todayExits}</div>
+          <div style={styles.cardLabel}>Uscite oggi</div>
+        </div>
+        <div style={styles.cardStyle}>
+          <div style={styles.cardIcon}>⏱️</div>
+          <div style={styles.cardValue}>{stats.activeSessions}</div>
+          <div style={styles.cardLabel}>Veicoli presenti</div>
+        </div>
+        <div style={styles.cardStyle}>
+          <div style={styles.cardIcon}>📋</div>
+          <div style={styles.cardValue}>{stats.activeSubscriptions}</div>
+          <div style={styles.cardLabel}>Abbonati attivi</div>
+        </div>
+        <div style={styles.cardStyle}>
+          <div style={styles.cardIcon}>💶</div>
+          <div style={styles.cardValue}>€ {stats.revenue.toFixed(2)}</div>
+          <div style={styles.cardLabel}>Incasso oggi</div>
+        </div>
+        <div style={styles.cardStyle}>
+          <div style={styles.cardIcon}>👥</div>
+          <div style={styles.cardValue}>{stats.totalCustomers}</div>
+          <div style={styles.cardLabel}>Clienti totali</div>
         </div>
       </div>
 
-      {/* Feature flags */}
-      {flags?.analytics && (
-        <div style={analyticsWidget}>
-          <div style={analyticsHeader}>
-            <h3 style={{ color: "#3B82F6", margin: 0 }}>📊 Analytics avanzati</h3>
-            <span style={analyticsBadge}>ATTIVO</span>
-          </div>
-          <p style={{ color: "#9ca3af", fontSize: "14px", margin: 0 }}>
-            I report dettagliati sono disponibili nella sezione dedicata.
-          </p>
+      {/* Occupazione */}
+      <div style={styles.chartCard}>
+        <div style={styles.chartHeader}>
+          <h3 style={styles.chartTitle}>📊 Stato Occupazione</h3>
+          <span style={styles.chartValue}>{stats.occupancyRate}%</span>
         </div>
+        <div style={styles.progressBarContainer}>
+          <div style={{ ...styles.progressBarFill, width: `${stats.occupancyRate}%` }} />
+        </div>
+      </div>
+
+      {statsLoading && (
+        <p style={{ textAlign: "center", fontSize: "12px", color: "#3B82F6", marginTop: "20px" }}>
+          🔄 Sincronizzazione dati in corso...
+        </p>
       )}
-    </TenantLayout>
-  );
-}
-
-/* ======================================================
-   COMPONENTE STAT CARD
-   ====================================================== */
-
-function StatCard({ label, value, icon, trend }: { 
-  label: string; 
-  value: number; 
-  icon: string;
-  trend?: number;
-}) {
-  const trendColor = trend && trend > 0 ? "#10b981" : trend && trend < 0 ? "#ef4444" : "#9ca3af";
-  const trendIcon = trend && trend > 0 ? "↑" : trend && trend < 0 ? "↓" : "→";
-
-  return (
-    <div style={statCardStyle}>
-      <div style={statCardHeader}>
-        <span style={statIcon}>{icon}</span>
-        {trend !== undefined && (
-          <span style={{ ...trendStyle, color: trendColor }}>
-            {trendIcon} {Math.abs(trend)}%
-          </span>
-        )}
-      </div>
-      <div style={statValue}>{value}</div>
-      <div style={statLabel}>{label}</div>
     </div>
   );
 }
 
 /* ======================================================
-   STILI
+   STILI (CSS-in-JS)
    ====================================================== */
-
-const loadingContainer = { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "400px" };
-const spinner = { width: "40px", height: "40px", border: "3px solid rgba(59, 130, 246, 0.1)", borderTopColor: "#3B82F6", borderRadius: "50%", animation: "spin 1s linear infinite" };
-const errorContainer = { textAlign: "center", padding: "60px 20px" };
-const headerStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px", flexWrap: "wrap", gap: "16px" };
-const pageTitle = { fontSize: "28px", fontWeight: 700, color: "#fff", margin: "0 0 4px 0" };
-const pageSubtitle = { fontSize: "14px", color: "#9ca3af", margin: 0 };
-const dateBadge = { padding: "8px 16px", background: "#1a1f25", borderRadius: "8px", color: "#9ca3af", fontSize: "14px", border: "1px solid rgba(255,255,255,0.05)" };
-const quickNavStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "15px", marginBottom: "30px" };
-const navButtonStyle = { display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", padding: "15px", background: "#1a1f25", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "10px", color: "#fff", fontSize: "14px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s ease" };
-const kpiGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "20px", marginBottom: "20px" };
-const statCardStyle = { background: "#111418", padding: "20px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)", transition: "transform 0.2s ease, box-shadow 0.2s ease", cursor: "pointer" };
-const statCardHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" };
-const statIcon = { fontSize: "24px", lineHeight: 1 };
-const trendStyle = { fontSize: "12px", fontWeight: 600, padding: "4px 8px", background: "rgba(255,255,255,0.03)", borderRadius: "20px" };
-const statValue = { fontSize: "32px", fontWeight: 700, color: "#fff", marginBottom: "4px" };
-const statLabel = { fontSize: "14px", color: "#9ca3af" };
-const secondaryGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px", marginBottom: "20px" };
-const chartCard = { background: "#111418", padding: "20px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)" };
-const chartHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" };
-const chartTitle = { fontSize: "16px", fontWeight: 600, color: "#fff", margin: 0 };
-const chartValue = { fontSize: "24px", fontWeight: 700, color: "#3B82F6" };
-const progressBarContainer = { width: "100%", height: "8px", background: "rgba(255,255,255,0.1)", borderRadius: "4px", marginBottom: "8px", overflow: "hidden" };
-const progressBarFill = { height: "100%", background: "#3B82F6", borderRadius: "4px", transition: "width 0.3s ease" };
-const chartNote = { fontSize: "12px", color: "#6b7280", margin: 0 };
-const revenueCard = { background: "#111418", padding: "20px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)", display: "flex", flexDirection: "column", gap: "8px" };
-const revenueValue = { fontSize: "32px", fontWeight: 700, color: "#10b981", lineHeight: 1.2 };
-const revenueNote = { fontSize: "12px", color: "#6b7280", margin: 0 };
-const analyticsWidget = { background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)", borderRadius: "12px", padding: "20px", marginTop: "20px" };
-const analyticsHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" };
-const analyticsBadge = { padding: "4px 8px", background: "#3B82F6", color: "#fff", borderRadius: "4px", fontSize: "12px", fontWeight: 600 };
-
-const style = document.createElement("style");
-style.textContent = `
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-`;
-document.head.appendChild(style);
+const styles = {
+  loadingContainer: { display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center", height: "60vh" },
+  spinner: { width: "30px", height: "30px", border: "3px solid rgba(59, 130, 246, 0.1)", borderTopColor: "#3B82F6", borderRadius: "50%", animation: "spin 1s linear infinite" },
+  headerStyle: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" },
+  pageTitle: { fontSize: "24px", fontWeight: 700, color: "#fff", margin: 0 },
+  pageSubtitle: { fontSize: "14px", color: "#9ca3af", margin: "4px 0 0 0" },
+  dateBadge: { padding: "6px 12px", background: "#1a1f25", borderRadius: "8px", color: "#9ca3af", fontSize: "12px", border: "1px solid rgba(255,255,255,0.05)" },
+  quickNavStyle: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px", marginBottom: "30px" },
+  navButtonStyle: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "12px", background: "#1a1f25", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", color: "#fff", fontSize: "13px", cursor: "pointer" },
+  kpiGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginBottom: "30px" },
+  cardStyle: { background: "#111418", padding: "20px", borderRadius: "16px", border: "1px solid rgba(255,255,255,0.05)", textAlign: "center" as const },
+  cardIcon: { fontSize: "28px", marginBottom: "10px" },
+  cardValue: { fontSize: "30px", fontWeight: 800, color: "#fff", marginBottom: "4px" },
+  cardLabel: { fontSize: "11px", color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "1px" },
+  chartCard: { background: "#111418", padding: "20px", borderRadius: "16px", border: "1px solid rgba(255,255,255,0.05)" },
+  chartHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" },
+  chartTitle: { fontSize: "15px", color: "#fff", margin: 0 },
+  chartValue: { fontSize: "22px", fontWeight: 800, color: "#3B82F6" },
+  progressBarContainer: { width: "100%", height: "10px", background: "rgba(255,255,255,0.05)", borderRadius: "5px", overflow: "hidden" as const },
+  progressBarFill: { height: "100%", background: "#3B82F6", borderRadius: "5px", transition: "width 1s ease" }
+};

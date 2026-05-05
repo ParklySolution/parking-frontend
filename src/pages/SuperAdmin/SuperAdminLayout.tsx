@@ -9,7 +9,8 @@ import {
   FaList,
   FaFlag,
   FaHistory,
-  FaSyncAlt
+  FaSyncAlt,
+  FaCar
 } from "react-icons/fa";
 import "@/styles/superadmin.css";
 
@@ -78,7 +79,8 @@ export default function SuperAdminLayout() {
             Categorie Globali
           </NavLink>
 
-          <NavLink to="/super/global-models" className="sa-link">
+          <NavLink to="/super/global-models" className={({ isActive }) => `sa-link ${isActive ? 'active' : ''}`}>
+            <FaCar className="icon" />
             Modelli Globali
           </NavLink>
 
