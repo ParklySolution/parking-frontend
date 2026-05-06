@@ -28,7 +28,7 @@ import { getTariffaBase } from "@/services/pricingService";
 import { createParkingSessionVehicleSnapshot } from "@/services/parkingSessionVehicleService";
 
 import {
-  createParkingSession,
+  createParkingSessionEntry,
   createParkingSessionWithWash,
 } from "@/services/parkingSessionService";
 
@@ -500,17 +500,31 @@ export default function Ingresso() {
       const color = selectedColor?.name ?? vehicleProfile?.color?.name ?? null;
       const vehicleProfileId = vehicleProfile?.id ?? null;
 
-      const session = await createParkingSession({
+      // 🆕 NUOVA CHIAMATA CON createParkingSessionEntry
+      const result = await createParkingSessionEntry({
         tenantId,
         categoryId,
+        plate: plateUpper,
+        brandName: vehicleProfile?.brand?.name ?? selectedModel?.brand_name ?? null,
+        modelName: vehicleProfile?.model?.name ?? selectedModel?.model_name ?? null,
+        categoryName: vehicleProfile?.category?.name ?? selectedModel?.category_name ?? null,
+        color: selectedColor?.name ?? vehicleProfile?.color?.name ?? null,
         customerId: lookup.status === "found" ? lookup.customer.id : null,
         subscriptionId: lookup.subscription?.id ?? null,
         conventionId: selectedConventionId,
-        notes: notes || undefined,
+        priceListId: null,
+        vehicleProfileId: vehicleProfile?.id ?? null,
+        washServices: [], // Nessun lavaggio per il parcheggio semplice
+        calculatedAmount: tariff || 0,
+        notes: notes || null
       });
 
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
       await createParkingSessionVehicleSnapshot({
-        parkingSessionId: session.id,
+        parkingSessionId: result.session!.id,
         plate: plateUpper,
         brandName,
         modelName,
@@ -520,7 +534,7 @@ export default function Ingresso() {
         vehicleProfileId,
       });
 
-      setCreatedTicket(session.ticket_number);
+      setCreatedTicket(result.session!.ticket_number);
       
       // Recupera dati azienda
       const { data: companyData } = await supabase
@@ -546,7 +560,7 @@ export default function Ingresso() {
 
       // 🖨️ STAMPA IL TICKET PARCHEGGIO CON TARIFFE COMPLETE
       await printTicket({
-        ticketNumber: session.ticket_number,
+        ticketNumber: result.session!.ticket_number,
         plate: plateUpper,
         entryTime: new Date(),
         brand: brandName,
@@ -562,9 +576,9 @@ export default function Ingresso() {
         },
         tariffInfo: tariffInfoToSend,
         qrData: JSON.stringify({
-          ticket: session.ticket_number,
+          ticket: result.session!.ticket_number,
           plate: plateUpper,
-          sessionId: session.id,
+          sessionId: result.session!.id,
           type: 'parking'
         }),
         notes: notes ? [notes] : undefined
@@ -744,17 +758,31 @@ export default function Ingresso() {
       const color = selectedColor?.name ?? vehicleProfile?.color?.name ?? null;
       const vehicleProfileId = vehicleProfile?.id ?? null;
 
-      const session = await createParkingSession({
+      // 🆕 NUOVA CHIAMATA CON createParkingSessionEntry per convenzione
+      const result = await createParkingSessionEntry({
         tenantId,
         categoryId,
+        plate: plateUpper,
+        brandName: vehicleProfile?.brand?.name ?? selectedModel?.brand_name ?? null,
+        modelName: vehicleProfile?.model?.name ?? selectedModel?.model_name ?? null,
+        categoryName: vehicleProfile?.category?.name ?? selectedModel?.category_name ?? null,
+        color: selectedColor?.name ?? vehicleProfile?.color?.name ?? null,
         customerId: lookup.status === "found" ? lookup.customer.id : null,
         subscriptionId: lookup.subscription?.id ?? null,
         conventionId: selectedConventionId,
-        notes: notes || undefined,
+        priceListId: null,
+        vehicleProfileId: vehicleProfile?.id ?? null,
+        washServices: [], // Nessun lavaggio per la convenzione
+        calculatedAmount: tariff || 0,
+        notes: notes || null
       });
 
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
       await createParkingSessionVehicleSnapshot({
-        parkingSessionId: session.id,
+        parkingSessionId: result.session!.id,
         plate: plateUpper,
         brandName,
         modelName,
@@ -764,7 +792,7 @@ export default function Ingresso() {
         vehicleProfileId,
       });
 
-      setCreatedTicket(session.ticket_number);
+      setCreatedTicket(result.session!.ticket_number);
       
       // Recupera dati azienda
       const { data: companyData } = await supabase
@@ -775,7 +803,7 @@ export default function Ingresso() {
 
       // 🖨️ STAMPA IL TICKET CONVENZIONE
       await printTicket({
-        ticketNumber: session.ticket_number,
+        ticketNumber: result.session!.ticket_number,
         plate: plateUpper,
         entryTime: new Date(),
         brand: brandName,
@@ -801,9 +829,9 @@ export default function Ingresso() {
           hourly: tariff,
         },
         qrData: JSON.stringify({
-          ticket: session.ticket_number,
+          ticket: result.session!.ticket_number,
           plate: plateUpper,
-          sessionId: session.id,
+          sessionId: result.session!.id,
           convention: selectedConvention.name
         }),
         conventionName: selectedConvention.name,

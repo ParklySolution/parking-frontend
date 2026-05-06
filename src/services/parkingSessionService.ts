@@ -6,6 +6,114 @@ import type {
   WashStatus
 } from "@/types/vehicleProfile";
 
+export interface CreateParkingSessionEntryParams {
+  tenantId: string;
+  categoryId: string;
+  plate: string;
+  brandName?: string | null;
+  modelName?: string | null;
+  categoryName?: string | null;
+  color?: string | null;
+  customerId?: string | null;
+  subscriptionId?: string | null;
+  conventionId?: string | null;
+  priceListId?: string | null;
+  vehicleProfileId?: string | null;
+  washServices?: WashServiceSelection[];
+  calculatedAmount?: number;
+  notes?: string | null;
+}
+
+export interface CreateParkingSessionResult {
+  success: boolean;
+  session?: {
+    id: string;
+    ticket_number: number;
+    entry_time: string;
+  };
+  error?: string;
+  detail?: string;
+}
+
+/**
+ * Crea una nuova sessione di parcheggio (ingresso)
+ * Questa è la funzione UNICA e DEFINITIVA per creare sessioni
+ */
+export async function createParkingSessionEntry(
+  params: CreateParkingSessionEntryParams
+): Promise<CreateParkingSessionResult> {
+  try {
+    console.log("🚀 createParkingSessionEntry chiamata con:", {
+      tenantId: params.tenantId,
+      categoryId: params.categoryId,
+      plate: params.plate,
+      washServicesCount: params.washServices?.length || 0
+    });
+
+    // Prepara i wash services nel formato corretto per JSONB
+    const washServicesFormatted = params.washServices?.map(ws => ({
+      washServiceId: ws.washServiceId,
+      quantity: ws.quantity || 1
+    })) || [];
+
+    const { data, error } = await supabase.rpc('create_parking_session_entry', {
+      p_tenant_id: params.tenantId,
+      p_category_id: params.categoryId,
+      p_plate: params.plate.toUpperCase().trim(),
+      p_brand_name: params.brandName || null,
+      p_model_name: params.modelName || null,
+      p_category_name: params.categoryName || null,
+      p_color: params.color || null,
+      p_customer_id: params.customerId || null,
+      p_subscription_id: params.subscriptionId || null,
+      p_convention_id: params.conventionId || null,
+      p_price_list_id: params.priceListId || null,
+      p_vehicle_profile_id: params.vehicleProfileId || null,
+      p_wash_services: washServicesFormatted,
+      p_calculated_amount: params.calculatedAmount || 0,
+      p_notes: params.notes || null
+    });
+
+    if (error) {
+      console.error("❌ Errore RPC:", error);
+      return {
+        success: false,
+        error: error.message,
+        detail: error.details
+      };
+    }
+
+    console.log("✅ Sessione creata:", data);
+    return data;
+
+  } catch (err: any) {
+    console.error("❌ Errore in createParkingSessionEntry:", err);
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
+// Versione semplificata per solo parcheggio (senza lavaggi)
+export async function createParkingSession(params: {
+  tenantId: string;
+  categoryId: string;
+  customerId?: string | null;
+  subscriptionId?: string | null;
+  conventionId?: string | null;
+  notes?: string;
+}) {
+  return createParkingSessionEntry({
+    ...params,
+    plate: 'TEMP', // sarà sovrascritto
+    brandName: null,
+    modelName: null,
+    categoryName: null,
+    washServices: []
+  });
+}
+
 /* ======================================================
    FUNZIONE PROFESSIONALE: CREA SESSIONE (CON O SENZA LAVAGGIO)
    Questa funzione usa la RPC 'create_parking_session_with_wash' 
@@ -138,17 +246,6 @@ export async function createParkingSessionWithWash(params: {
     console.error("❌ Errore nel service createParkingSessionWithWash:", error);
     throw error;
   }
-}
-
-/* ======================================================
-   FUNZIONE PER IL SOLO INGRESSO (PARCHEGGIO BASE)
-   Reindirizza alla logica principale per coerenza
-   ====================================================== */
-export async function createParkingSession(params: any) {
-  return createParkingSessionWithWash({
-    ...params,
-    washServices: []
-  });
 }
 
 /* ======================================================

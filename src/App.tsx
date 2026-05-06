@@ -110,6 +110,11 @@ import CreateSuperAdmin from "@/pages/CreateSuperAdmin";
 import OperatorContracts from "@/pages/operator/Contracts";
 
 /* ======================================================
+   MIDDLEWARE OPERATOR
+====================================================== */
+import RequireOperator from "@/middleware/RequireOperator";
+
+/* ======================================================
    ROLE REDIRECT COMPONENT
 ====================================================== */
 function RoleRedirect() {
@@ -170,44 +175,39 @@ function App() {
 
       <Routes>
         {/* AUTH */}
-<Route path="/create-super-admin" element={<CreateSuperAdmin />} />
-<Route path="/auth/forgot" element={<ForgotPassword />} />
-<Route path="/auth/reset-password" element={<ResetPassword />} />  {/* 🔥 MODIFICATO */}
-<Route path="/auth/update-password" element={<UpdatePassword />} />
-<Route path="/accept-invite" element={<AcceptInvite />} />
+        <Route path="/create-super-admin" element={<CreateSuperAdmin />} />
+        <Route path="/auth/forgot" element={<ForgotPassword />} />
+        <Route path="/auth/reset-password" element={<ResetPassword />} />
+        <Route path="/auth/update-password" element={<UpdatePassword />} />
+        <Route path="/accept-invite" element={<AcceptInvite />} />
 
-        {/* OPERATORE */}
-        <Route path="/" element={<RoleRedirect />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        {/* OPERATORE - PROTETTO DA RequireOperator */}
+        <Route element={<RequireOperator />}>
+          <Route path="/" element={<RoleRedirect />} />
+          <Route path="/dashboard" element={<Dashboard />} />
 
-        <Route element={<AppLayout />}>
-          <Route path="/ingresso" element={<Ingresso />} />
-          <Route path="/exit" element={<Exit />} />
-          <Route path="/subscriptions" element={<Subscriptions />} />
-          <Route path="/customers" element={<Customers />} />
-          <Route path="/shifts" element={<ShiftsPage />} />
+          <Route element={<AppLayout />}>
+            <Route path="/ingresso" element={<Ingresso />} />
+            <Route path="/exit" element={<Exit />} />
+            <Route path="/subscriptions" element={<Subscriptions />} />
+            <Route path="/customers" element={<Customers />} />
+            <Route path="/shifts" element={<ShiftsPage />} />
+          </Route>
+
+          <Route path="/sessions" element={<SessionsPage />} />
         </Route>
 
-        <Route path="/sessions" element={<SessionsPage />} />
-
-        {/* OPERATOR CONTRACTS */}
-        <Route
-          path="/tenant/:tenantId/contracts"
-          element={
-            <RequireTenantSession>
-              <OperatorContracts />
-            </RequireTenantSession>
-          }
-        />
-
-        <Route
-          path="/tenant/:tenantId/subscription-renewal"
-          element={
-            <RequireTenantSession>
-              <SubscriptionRenewal />
-            </RequireTenantSession>
-          }
-        />
+        {/* OPERATOR CONTRACTS - PROTETTO DA RequireOperator */}
+        <Route element={<RequireOperator />}>
+          <Route
+            path="/tenant/:tenantId/contracts"
+            element={<OperatorContracts />}
+          />
+          <Route
+            path="/tenant/:tenantId/subscription-renewal"
+            element={<SubscriptionRenewal />}
+          />
+        </Route>
 
         {/* ADMIN */}
         <Route path="/admin/login" element={<AdminLogin />} />

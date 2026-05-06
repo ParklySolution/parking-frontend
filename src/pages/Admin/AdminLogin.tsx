@@ -21,8 +21,10 @@ export default function AdminLogin() {
         
         if (role === "super_admin") {
           navigate("/super/dashboard", { replace: true });
-        } else if (tenantId && (role === "tenant_admin" || role === "operator")) {
+        } else if (role === "tenant_admin" && tenantId) {
           navigate(`/tenant/${tenantId}/dashboard`, { replace: true });
+        } else if (role === "operator") {
+          navigate("/dashboard", { replace: true });
         }
       }
     };
@@ -30,67 +32,79 @@ export default function AdminLogin() {
   }, [navigate]);
 
   async function handleLogin(e: React.FormEvent) {
-  e.preventDefault();
-  setLoading(true);
-  setError(null);
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
-  try {
-    console.log("📦 Tentativo login con:", { email });
+    try {
+      console.log("📦 Tentativo login con:", { email });
 
-    const { data, error: loginError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (loginError) {
-      console.error("❌ Errore login:", loginError);
-      
-      if (loginError.message === "Invalid login credentials") {
-        setError("Email o password non validi");
-      } else if (loginError.message.includes("Email not confirmed")) {
-        setError("Email non confermata. Controlla la tua casella di posta.");
-      } else {
-        setError(loginError.message);
-      }
-      return;
-    }
-
-    console.log("✅ Login riuscito!");
-
-    const { profile } = await api.getProfile(data.user.id);
-    console.log("📊 Profilo dal backend:", profile);
-
-    let role = profile?.role || data.user.user_metadata?.role || data.user.app_metadata?.role;
-    let tenantId = profile?.company_id || data.user.user_metadata?.tenant_id;
-
-    console.log("📊 Ruolo determinato:", role);
-    console.log("📊 Tenant ID iniziale:", tenantId);
-
-    // 🔥 CORREZIONE: Trova il tenant SPECIFICO associato all'utente
-    let finalTenantId = tenantId;
-
-    if (tenantId && (role === "tenant_admin" || role === "operator")) {
-      console.log("🔍 Cerco tenant per company_id:", tenantId);
-      
-      // Recupera l'user metadata per avere il tenant_id specifico
-      const userMetadata = data.user.user_metadata;
-      const specificTenantId = userMetadata?.tenant_id;
-      
-      console.log("📊 Tenant specifico dall'user metadata:", specificTenantId);
-      
-      if (specificTenantId) {
-        // Verifica che il tenant esista
-        const { data: specificTenant } = await supabase
-          .from("admin_tenants")
-          .select("id, name")
-          .eq("id", specificTenantId)
-          .maybeSingle();
+      if (loginError) {
+        console.error("❌ Errore login:", loginError);
         
-        if (specificTenant) {
-          finalTenantId = specificTenant.id;
-          console.log("✅ Tenant specifico trovato:", finalTenantId, specificTenant.name);
+        if (loginError.message === "Invalid login credentials") {
+          setError("Email o password non validi");
+        } else if (loginError.message.includes("Email not confirmed")) {
+          setError("Email non confermata. Controlla la tua casella di posta.");
         } else {
-          // Fallback: cerca per company_id
+          setError(loginError.message);
+        }
+        return;
+      }
+
+      console.log("✅ Login riuscito!");
+
+      const { profile } = await api.getProfile(data.user.id);
+      console.log("📊 Profilo dal backend:", profile);
+
+      let role = profile?.role || data.user.user_metadata?.role || data.user.app_metadata?.role;
+      let tenantId = profile?.company_id || data.user.user_metadata?.tenant_id;
+
+      console.log("📊 Ruolo determinato:", role);
+      console.log("📊 Tenant ID iniziale:", tenantId);
+
+      // 🔥 CORREZIONE: Trova il tenant SPECIFICO associato all'utente
+      let finalTenantId = tenantId;
+
+      if (tenantId && (role === "tenant_admin" || role === "operator")) {
+        console.log("🔍 Cerco tenant per company_id:", tenantId);
+        
+        // Recupera l'user metadata per avere il tenant_id specifico
+        const userMetadata = data.user.user_metadata;
+        const specificTenantId = userMetadata?.tenant_id;
+        
+        console.log("📊 Tenant specifico dall'user metadata:", specificTenantId);
+        
+        if (specificTenantId) {
+          // Verifica che il tenant esista
+          const { data: specificTenant } = await supabase
+            .from("admin_tenants")
+            .select("id, name")
+            .eq("id", specificTenantId)
+            .maybeSingle();
+          
+          if (specificTenant) {
+            finalTenantId = specificTenant.id;
+            console.log("✅ Tenant specifico trovato:", finalTenantId, specificTenant.name);
+          } else {
+            // Fallback: cerca per company_id
+            const { data: tenants } = await supabase
+              .from("admin_tenants")
+              .select("id, name")
+              .eq("company_id", tenantId);
+            
+            if (tenants && tenants.length > 0) {
+              finalTenantId = tenants[0].id;
+              console.log("⚠️ Fallback al primo tenant:", finalTenantId);
+            }
+          }
+        } else {
+          // Se non c'è tenant specifico, cerca per company_id
           const { data: tenants } = await supabase
             .from("admin_tenants")
             .select("id, name")
@@ -98,58 +112,53 @@ export default function AdminLogin() {
           
           if (tenants && tenants.length > 0) {
             finalTenantId = tenants[0].id;
-            console.log("⚠️ Fallback al primo tenant:", finalTenantId);
+            console.log("⚠️ Nessun tenant specifico, uso il primo:", finalTenantId);
           }
         }
-      } else {
-        // Se non c'è tenant specifico, cerca per company_id
-        const { data: tenants } = await supabase
-          .from("admin_tenants")
-          .select("id, name")
-          .eq("company_id", tenantId);
-        
-        if (tenants && tenants.length > 0) {
-          finalTenantId = tenants[0].id;
-          console.log("⚠️ Nessun tenant specifico, uso il primo:", finalTenantId);
+      }
+
+      console.log("📊 Tenant ID finale:", finalTenantId);
+
+      // 🔥 REDIRECT CORRETTO PER RUOLO
+      if (role === "super_admin") {
+        navigate("/super/dashboard", { replace: true });
+        return;
+      }
+
+      if (role === "tenant_admin") {
+        if (!finalTenantId) {
+          setError("Profilo utente incompleto: tenant_id mancante");
+          return;
         }
-      }
-    }
-
-    console.log("📊 Tenant ID finale:", finalTenantId);
-
-    if (role === "super_admin") {
-      navigate("/super/dashboard", { replace: true });
-      return;
-    }
-
-    if (role === "tenant_admin" || role === "operator") {
-      if (!finalTenantId) {
-        setError("Profilo utente incompleto: tenant_id mancante");
+        navigate(`/tenant/${finalTenantId}/dashboard`, { replace: true });
         return;
       }
-      navigate(`/tenant/${finalTenantId}/dashboard`, { replace: true });
-      return;
-    }
 
-    if (role === "admin" || role === "manager") {
-      if (!finalTenantId) {
-        setError("Profilo utente incompleto: tenant_id mancante");
+      if (role === "operator") {
+        // 🔥 OPERATOR → va alla dashboard generica (non tenant)
+        navigate("/dashboard", { replace: true });
         return;
       }
-      navigate(`/admin/${finalTenantId}`, { replace: true });
-      return;
+
+      if (role === "admin" || role === "manager") {
+        if (!finalTenantId) {
+          setError("Profilo utente incompleto: tenant_id mancante");
+          return;
+        }
+        navigate(`/admin/${finalTenantId}`, { replace: true });
+        return;
+      }
+
+      console.warn("⚠️ Ruolo non riconosciuto:", role);
+      navigate("/dashboard");
+
+    } catch (err: any) {
+      console.error("❌ Errore login:", err);
+      setError("Errore di connessione al server");
+    } finally {
+      setLoading(false);
     }
-
-    console.warn("⚠️ Ruolo non riconosciuto:", role);
-    navigate("/dashboard");
-
-  } catch (err: any) {
-    console.error("❌ Errore login:", err);
-    setError("Errore di connessione al server");
-  } finally {
-    setLoading(false);
   }
-}
 
   // STILI (invariati)
   const colors = {
