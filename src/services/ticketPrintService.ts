@@ -5,9 +5,13 @@ interface TicketData {
   ticketNumber: number;
   plate: string;
   entryTime: Date;
+  exitTime?: Date;  // 🔥 AGGIUNTO
   brand?: string;
   model?: string;
   category?: string;
+  hours?: number;  // 🔥 AGGIUNTO - ore di sosta
+  totalAmount?: number;  // 🔥 AGGIUNTO - importo pagato
+  paymentMethod?: string;  // 🔥 AGGIUNTO - metodo pagamento
   company?: {
     company_name?: string;
     legal_address?: string;
@@ -58,9 +62,13 @@ export const printTicket = async (data: TicketData) => {
       ticketNumber,
       plate,
       entryTime,
+      exitTime,  // 🔥 AGGIUNTO
       brand = '',
       model = '',
       category = '',
+      hours = 0,  // 🔥 AGGIUNTO con default
+      totalAmount = 0,  // 🔥 AGGIUNTO con default
+      paymentMethod = 'Contanti',  // 🔥 AGGIUNTO con default
       company = {},
       tariffInfo = {},
       qrData,
@@ -105,10 +113,12 @@ export const printTicket = async (data: TicketData) => {
       return;
     }
 
-    const dateStr = entryTime.toLocaleDateString('it-IT');
-    const timeStr = entryTime.toLocaleTimeString('it-IT');
+    const entryDateStr = entryTime.toLocaleDateString('it-IT');
+    const entryTimeStr = entryTime.toLocaleTimeString('it-IT');
+    const exitDateStr = exitTime ? exitTime.toLocaleDateString('it-IT') : '';
+    const exitTimeStr = exitTime ? exitTime.toLocaleTimeString('it-IT') : '';
     
-    // Combinazione note (senza condizioni che vanno a parte)
+    // Combinazione note
     const allNotes = [...notes];
     if (conventionName) {
       allNotes.unshift(`CONVENZIONE APPLICATA: ${conventionName}`);
@@ -212,6 +222,24 @@ export const printTicket = async (data: TicketData) => {
             font-weight: bold;
           }
           
+          /* BOX PAGAMENTO - 🔥 NUOVO */
+          .payment-box {
+            border: 2px solid #10b981;
+            padding: 2mm;
+            margin-bottom: 2mm;
+            background: #f0fff4;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14pt;
+            font-weight: bold;
+            padding: 2mm 0;
+          }
+          .total-amount {
+            color: #10b981;
+          }
+          
           /* SERVIZI LAVAGGIO */
           .service-item {
             display: flex;
@@ -300,7 +328,17 @@ export const printTicket = async (data: TicketData) => {
           <div class="sosta-details">
             <div class="row">
               <span class="label">📅 Ingresso:</span>
-              <span>${dateStr} ${timeStr}</span>
+              <span>${entryDateStr} ${entryTimeStr}</span>
+            </div>
+            ${exitTime ? `
+            <div class="row">
+              <span class="label">📅 Uscita:</span>
+              <span>${exitDateStr} ${exitTimeStr}</span>
+            </div>
+            ` : ''}
+            <div class="row">
+              <span class="label">⏱️ Ore sosta:</span>
+              <span>${hours}</span>
             </div>
             <div class="row">
               <span class="label">🚗 Targa:</span>
@@ -312,6 +350,20 @@ export const printTicket = async (data: TicketData) => {
             </div>
           </div>
         </div>
+
+        <!-- 🔥 BOX PAGAMENTO - Mostra SOLO se è un ticket di USCITA (totalAmount > 0) -->
+${totalAmount !== undefined && totalAmount > 0 ? `
+<div class="payment-box" style="border: 2px solid #10b981; padding: 2mm; margin-bottom: 2mm; background: #f0fff4;">
+  <div style="display: flex; justify-content: space-between; font-size: 14pt; font-weight: bold; padding: 2mm 0;">
+    <span>TOTALE PAGATO:</span>
+    <span style="color: #10b981;">${formatEuro(totalAmount)}</span>
+  </div>
+  <div style="display: flex; justify-content: space-between; margin: 1mm 0;">
+    <span style="font-weight: bold;">💳 Metodo pagamento:</span>
+    <span>${paymentMethod === 'CASH' ? 'Contanti' : paymentMethod === 'CARD' ? 'Carta di credito/debito' : paymentMethod || 'Non specificato'}</span>
+  </div>
+</div>
+` : ''}
 
         <!-- SERVIZI LAVAGGIO (se presenti) -->
         ${hasWashServices && washServices.length > 0 ? `
@@ -343,7 +395,6 @@ export const printTicket = async (data: TicketData) => {
         <div class="section">
           <div class="section-title">💰 TARIFFE ${category ? `- ${category}` : ''}</div>
           
-          <!-- Tariffe orarie -->
           ${(tariffInfo.firstHour !== undefined || tariffInfo.hourly !== undefined || tariffInfo.nextHours !== undefined) ? `
             ${tariffInfo.firstHour !== undefined ? `
             <div class="tariff-item">
@@ -362,7 +413,6 @@ export const printTicket = async (data: TicketData) => {
             </div>` : ''}
           ` : ''}
 
-          <!-- Tariffe speciali (solo se presenti) -->
           ${(tariffInfo.nightTariff !== undefined || tariffInfo.overnightFixed !== undefined || tariffInfo.maxDaily !== undefined) ? `
             ${tariffInfo.nightTariff !== undefined ? `
             <div class="tariff-item">
@@ -387,19 +437,16 @@ export const printTicket = async (data: TicketData) => {
         <div class="notes-section">
           <div class="section-title">📝 NOTE</div>
           
-          <!-- Convenzione in neretto (se presente) -->
           ${conventionName ? `
           <div class="convention-highlight">CONVENZIONE APPLICATA: ${conventionName}</div>
           ` : ''}
           
-          <!-- Note aggiuntive (se presenti) -->
           ${allNotes.length > 0 ? `
           <div style="font-size: 8pt; margin-bottom: 1mm;">
             ${allNotes.map(note => `<div>${note}</div>`).join('')}
           </div>
           ` : ''}
           
-          <!-- Condizioni di posteggio (carattere piccolo) -->
           <div class="conditions-text">
             ${getParkingConditions()}
           </div>
@@ -435,7 +482,7 @@ export const printTicket = async (data: TicketData) => {
     setTimeout(() => {
       try {
         iframe.contentWindow?.print();
-        console.log(`🖨️ Ticket #${ticketNumber} inviato alla stampante`);
+        console.log(`🖨️ Ticket #${ticketNumber} inviato alla stampante - Importo: €${totalAmount}`);
       } catch (printError) {
         console.error('❌ Errore stampa:', printError);
       } finally {

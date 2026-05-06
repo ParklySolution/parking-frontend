@@ -845,22 +845,26 @@ export default function Ingresso() {
   };
 
   const resetForm = () => {
-    setPlate("");
-    setModelInput("");
-    setSelectedModel(null);
-    setVehicleProfile(null);
-    setSelectedColor(null);
-    setWashServices([]);
-    setSelectedConventionId(null);
-    setSelectedConvention(null);
-    setLookup({ status: "idle" });
-    setCreatedTicket(null);
-    setShowToast(false);
-    setShowModelSuggestions(false);
-    setNotes("");
-    
-    navigate("/");
-  };
+  // Resetta gli state
+  setPlate("");
+  setModelInput("");
+  setSelectedModel(null);
+  setVehicleProfile(null);
+  setSelectedColor(null);
+  setWashServices([]);
+  setSelectedConventionId(null);
+  setSelectedConvention(null);
+  setLookup({ status: "idle" });
+  setCreatedTicket(null);
+  setShowToast(false);
+  setShowModelSuggestions(false);
+  setNotes("");
+  
+  // Aspetta che il toast venga mostrato prima di reindirizzare
+  setTimeout(() => {
+    navigate("/dashboard");
+  }, 1500);
+};
 
   /* ===============================
      RENDER CONDIZIONALE

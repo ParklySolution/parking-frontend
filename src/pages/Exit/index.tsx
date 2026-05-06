@@ -1,4 +1,4 @@
-// src/pages/exit/index.tsx - VERSIONE COMPLETA AGGIORNATA
+// src/pages/exit/index.tsx - VERSIONE COMPLETA CON STAMPA INTEGRATA
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -24,6 +24,9 @@ import type { ExitButton } from "@/services/exitButtonService";
 import { getTariffaCompleta } from "@/services/pricingService";
 import { lookupCustomerByPlate } from "@/services/customerLookupService";
 import type { CustomerLookupResult } from "@/services/customerLookupService";
+
+// 📦 Servizio di stampa ticket
+import { printTicket } from "@/services/ticketPrintService";
 
 // 📦 Import icone
 import { 
@@ -220,6 +223,7 @@ export default function Exit() {
   const [appliedButtons, setAppliedButtons] = useState<{ id: string; label: string; amount: number }[]>([]);
   const [overrideButton, setOverrideButton] = useState<{ id: string; label: string; amount: number } | null>(null);
   const [calculatedPrice, setCalculatedPrice] = useState<number>(0);
+  const [priceRules, setPriceRules] = useState<any>(null);
 
   /* =========================================
      FUNZIONE PER RECUPERARE SHIFT ATTIVO
@@ -255,6 +259,93 @@ export default function Exit() {
       return null;
     }
   };
+
+  /* =========================================
+     FUNZIONE STAMPA TICKET (IMPLEMENTATA)
+     ========================================= */
+  /* =========================================
+   FUNZIONE STAMPA TICKET (CORRETTA CON IMPORTO)
+   ========================================= */
+const handlePrintTicket = async (tipo: string) => {
+  if (!session || !tenantId) {
+    alert("Dati sessione mancanti");
+    return;
+  }
+
+  try {
+    // Recupera dati azienda
+    const { data: companyData } = await supabase
+      .from('tenant_company_info')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    // Calcola ore di sosta effettive
+    const oreSostaCalc = oreSosta;
+
+    // Prepara i servizi lavaggio per la stampa
+    const washServicesList = washServices.map(ws => {
+      const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
+      return {
+        name: service?.serviceName || "Lavaggio",
+        price: service?.price || 0,
+        duration: service?.durationMinutes || 0
+      };
+    });
+
+    // Importo finale pagato (usa calculatedPrice che è il totale effettivo)
+    const finalTotal = calculatedPrice;
+
+    console.log("💰 STAMPA TICKET - Importo finale:", finalTotal);
+    console.log("💰 STAMPA TICKET - calculatedPrice:", calculatedPrice);
+    console.log("💰 STAMPA TICKET - tariffaOraria:", tariffaOraria);
+
+    await printTicket({
+      ticketNumber: session.ticket_number,
+      plate: vehicleData?.plate || session?.parking_session_vehicles?.[0]?.plate || "",
+      entryTime: new Date(session.entry_time),
+      exitTime: new Date(),
+      brand: vehicleData?.brand?.name || session?.parking_session_vehicles?.[0]?.brand_name || "",
+      model: vehicleData?.model?.name || session?.parking_session_vehicles?.[0]?.model_name || "",
+      category: categoriaNome || session?.parking_session_vehicles?.[0]?.category_name || "",
+      company: {
+        company_name: companyData?.company_name,
+        legal_address: companyData?.legal_address,
+        phone: companyData?.phone,
+        email: companyData?.email,
+        website: companyData?.website,
+        vat_number: companyData?.vat_number
+      },
+      tariffInfo: priceRules ? {
+        firstHour: priceRules.first_hour,
+        hourly: priceRules.hourly,
+        nextHours: priceRules.next_hours,
+        maxDaily: priceRules.day_max,
+        nightTariff: priceRules.night_hourly,
+        overnightFixed: priceRules.overnight_24h
+      } : undefined,
+      qrData: JSON.stringify({
+        ticket: session.ticket_number,
+        plate: vehicleData?.plate,
+        sessionId: session.id,
+        type: 'exit'
+      }),
+      hasWashServices: washServices.length > 0,
+      washServices: washServicesList.map(s => `${s.name} (€${s.price.toFixed(2)})`),
+      washTotal: washTotal,
+      totalAmount: finalTotal,  // 🔥 IMPORTANTE: passa l'importo pagato
+      paymentMethod: paymentMethod === 'CASH' ? 'Contanti' : (paymentMethod === 'CARD' ? 'Carta' : 'Altro'),
+      hours: oreSostaCalc,
+      notes: notes ? [notes] : undefined
+    });
+
+    console.log(`✅ Ticket ${tipo} stampato con successo - Importo: €${finalTotal}`);
+
+  } catch (err) {
+    console.error("❌ Errore stampa ticket:", err);
+    alert("Errore durante la stampa del ticket");
+  }
+};
 
   /* ===============================
       RECUPERA TENANT ID
@@ -490,7 +581,28 @@ export default function Exit() {
   };
 
   /* =========================================
-      CALCOLA TOTALE LAVAGGI (Corretto con washServiceId)
+      CARICA REGOLE DI PREZZO
+      ========================================= */
+  const loadPriceRules = async (catId: string) => {
+    if (!tenantId || !catId) return;
+
+    try {
+      const rules = await getTariffaCompleta(tenantId, catId);
+      console.log("📊 Regole di prezzo caricate:", rules);
+      setPriceRules(rules);
+
+      if (rules) {
+        const tariffaDaMostrare = rules.first_hour || rules.hourly || 0;
+        setTariffaOraria(tariffaDaMostrare);
+        console.log("💰 Tariffa oraria aggiornata:", tariffaDaMostrare);
+      }
+    } catch (error) {
+      console.error("❌ Errore caricamento regole prezzo:", error);
+    }
+  };
+
+  /* =========================================
+      CALCOLA TOTALE LAVAGGI
       ========================================= */
   const calculateWashTotal = () => {
     if (!washServices.length || !availableWashServices.length) {
@@ -502,7 +614,6 @@ export default function Exit() {
     
     let total = 0;
     washServices.forEach(ws => {
-      // ⭐ MODIFICATO: usa washServiceId invece di washServiceTypeId
       const service = availableWashServices.find(s => 
         s.washServiceId === ws.washServiceId
       );
@@ -549,29 +660,6 @@ export default function Exit() {
     setTotaleConvenzione(sconto);
   }, [selectedConvention, oreSosta, tariffaOraria]);
 
-  /* =========================================
-      REGOLE DI PREZZO
-      ========================================= */
-  const [priceRules, setPriceRules] = useState<any>(null);
-
-  const loadPriceRules = async (catId: string) => {
-    if (!tenantId || !catId) return;
-
-    try {
-      const rules = await getTariffaCompleta(tenantId, catId);
-      console.log("📊 Regole di prezzo caricate:", rules);
-      setPriceRules(rules);
-
-      if (rules) {
-        const tariffaDaMostrare = rules.first_hour || rules.hourly || 0;
-        setTariffaOraria(tariffaDaMostrare);
-        console.log("💰 Tariffa oraria aggiornata:", tariffaDaMostrare);
-      }
-    } catch (error) {
-      console.error("❌ Errore caricamento regole prezzo:", error);
-    }
-  };
-
   useEffect(() => {
     if (categoryId) {
       loadPriceRules(categoryId);
@@ -579,105 +667,73 @@ export default function Exit() {
   }, [categoryId, tenantId]);
 
   /* =========================================
-      CALCOLO PREZZO CON ENGINE (Corretto per Abbonati)
+      CALCOLO PREZZO CON ENGINE
    ========================================= */
-const calculateFinalTotal = useCallback(async () => {
-  if (!session?.entry_time || !tenantId) {
-    return 0;
-  }
-
-  try {
-    // 1. Calcolo Engine Sosta (pricingEngine decide tutto)
-
-// 🔍 DEBUG: controlliamo cosa arriva davvero dal lookup
-console.log("🔍 LOOKUP RESULT COMPLETO:", lookupResult);
-console.log("🔍 LOOKUP RESULT CONTRACTS DETTAGLIO:", JSON.stringify(lookupResult.contracts, null, 2));
-
-console.log("🔎 DEBUG SUBSCRIPTION MAPPING:", {
-  fullContracts: lookupResult?.contracts,
-  subscription_type: lookupResult?.contracts?.subscription_type,
-  is_active: lookupResult?.contracts?.is_active
-});
-
-// 🔎 DEBUG: controlliamo cosa arriva davvero dal lookup
-console.log("🔎 DEBUG SUBSCRIPTION MAPPING:", {
-  fullContracts: lookupResult?.contracts,
-  subscription_type: lookupResult?.contracts?.subscription?.subscription_type,
-  is_active: lookupResult?.contracts?.subscription?.is_active
-});
-
-const result = await calculatePrice({
-  tenantId,
-  session,
-  overrideId: overrideButton?.id,
-  additionalButtonIds: appliedButtons.map(b => b.id),
-
-  // ⭐ MAPPING CORRETTO verso la struttura reale del lookupResult
-  lookupResult: {
-    subscription: {
-      subscription_type: lookupResult?.contracts?.subscription?.subscription_type ?? null,
-      is_active: lookupResult?.contracts?.subscription?.is_active ?? false
+  const calculateFinalTotal = useCallback(async () => {
+    if (!session?.entry_time || !tenantId) {
+      return 0;
     }
-  }
-});
 
+    try {
+      console.log("🔍 LOOKUP RESULT COMPLETO:", lookupResult);
+      console.log("🔍 LOOKUP RESULT CONTRACTS DETTAGLIO:", JSON.stringify(lookupResult.contracts, null, 2));
 
-    // 2. La UI NON forza più nulla
-    const baseAmount = result.amount;
+      const result = await calculatePrice({
+        tenantId,
+        session,
+        overrideId: overrideButton?.id,
+        additionalButtonIds: appliedButtons.map(b => b.id),
+        lookupResult: {
+          subscription: {
+            subscription_type: lookupResult?.contracts?.subscription?.subscription_type ?? null,
+            is_active: lookupResult?.contracts?.subscription?.is_active ?? false
+          }
+        }
+      });
 
-    // 3. Calcolo lavaggi
-    const totaleLavaggi = useFreeWash ? 0 : washTotal;
+      const baseAmount = result.amount;
+      const totaleLavaggi = useFreeWash ? 0 : washTotal;
+      const totaleInsoluti = totalePendenti;
+      const totaleFinale = baseAmount + totaleLavaggi - totaleConvenzione + scontoManuale + totaleInsoluti;
 
-    // 4. Insoluti
-    const totaleInsoluti = totalePendenti;
+      console.log("💰 CALCOLO PREZZO FINALE:", {
+        engineType: result.type,
+        abbonato: result.type === "subscription" ? "SÌ (Sosta gratuita)" : "NO",
+        base_sosta: baseAmount,
+        lavaggi: totaleLavaggi,
+        convenzione: totaleConvenzione,
+        scontoManuale: scontoManuale,
+        insoluti: totaleInsoluti,
+        totale: Math.max(0, totaleFinale)
+      });
 
-    // 5. Totale finale
-    const totaleFinale =
-      baseAmount +
-      totaleLavaggi -
-      totaleConvenzione +
-      scontoManuale +
-      totaleInsoluti;
+      return Math.max(0, totaleFinale);
 
-    console.log("💰 CALCOLO PREZZO FINALE:", {
-      engineType: result.type,
-      abbonato: result.type === "subscription" ? "SÌ (Sosta gratuita)" : "NO",
-      base_sosta: baseAmount,
-      lavaggi: totaleLavaggi,
-      convenzione: totaleConvenzione,
-      insoluti: totaleInsoluti,
-      totale: totaleFinale
-    });
+    } catch (error) {
+      console.error("❌ Errore calcolo prezzo:", error);
+      return 0;
+    }
+  }, [
+    session,
+    tenantId,
+    overrideButton,
+    appliedButtons,
+    washTotal,
+    useFreeWash,
+    totaleConvenzione,
+    scontoManuale,
+    totalePendenti,
+    lookupResult
+  ]);
 
-    return Math.max(0, totaleFinale);
-
-  } catch (error) {
-    console.error("❌ Errore calcolo prezzo:", error);
-    return 0;
-  }
-}, [
-  session,
-  tenantId,
-  overrideButton,
-  appliedButtons,
-  washTotal,
-  useFreeWash,
-  totaleConvenzione,
-  scontoManuale,
-  totalePendenti,
-  lookupResult
-]);
-
-
-useEffect(() => {
-  const updatePrice = async () => {
-    console.log("🔄 UpdatePrice triggerato dal cambiamento di lookupResult o altri stati");
-    const price = await calculateFinalTotal();
-    setCalculatedPrice(price);
-  };
-  updatePrice();
-}, [calculateFinalTotal, lookupResult]);
-
+  useEffect(() => {
+    const updatePrice = async () => {
+      console.log("🔄 UpdatePrice triggerato");
+      const price = await calculateFinalTotal();
+      setCalculatedPrice(price);
+    };
+    updatePrice();
+  }, [calculateFinalTotal]);
 
   /* =========================================
       GESTIONE PULSANTI EXTRA
@@ -720,7 +776,7 @@ useEffect(() => {
   };
 
   /* =========================================
-      GESTIONE LAVAGGI (Corretto con washServiceId)
+      GESTIONE LAVAGGI
       ========================================= */
   const handleWashToggle = (service: WashServicePriceUI) => {
     console.log("🖱️ Cliccato servizio:", service.serviceName, "ID:", service.washServiceId);
@@ -750,46 +806,44 @@ useEffect(() => {
   };
 
   /* =========================================
-   LOOKUP SESSIONE PER TICKET (Versione Definitiva)
+      LOOKUP SESSIONE PER TICKET
    ========================================= */
-const handleLookup = async (ticketNum?: number) => {
-  const numToUse = ticketNum !== undefined ? ticketNum : ticketNumber;
+  const handleLookup = async (ticketNum?: number) => {
+    const numToUse = ticketNum !== undefined ? ticketNum : ticketNumber;
 
-  console.log("🚀 AVVIO LOOKUP - Ticket:", numToUse, "Tenant:", tenantId);
+    console.log("🚀 AVVIO LOOKUP - Ticket:", numToUse, "Tenant:", tenantId);
 
-  if (!numToUse || !tenantId) {
-    console.warn("⚠️ Dati mancanti per il lookup");
-    setStatus("error");
-    return;
-  }
-
-  setStatus("loading");
-
-  try {
-    const openSession = await fetchOpenSessionByTicket(tenantId, Number(numToUse));
-
-    if (!openSession) {
-      console.warn("❌ Sessione non trovata");
+    if (!numToUse || !tenantId) {
+      console.warn("⚠️ Dati mancanti per il lookup");
       setStatus("error");
       return;
     }
 
-    setSession(openSession);
+    setStatus("loading");
 
-    // 1. Gestione Veicolo e Categoria
-    const vehicle = openSession.parking_session_vehicles?.[0];
-    let finalCategoryId = null;
+    try {
+      const openSession = await fetchOpenSessionByTicket(tenantId, Number(numToUse));
 
-    if (vehicle) {
-      setVehicleData({
-        plate: vehicle.plate,
-        brand: { name: vehicle.brand_name },
-        model: { name: vehicle.model_name },
-        category: { name: vehicle.category_name },
-        color: vehicle.color ? { name: vehicle.color } : null
-      });
+      if (!openSession) {
+        console.warn("❌ Sessione non trovata");
+        setStatus("error");
+        return;
+      }
 
-      if (vehicle.plate) {
+      setSession(openSession);
+
+      const vehicle = openSession.parking_session_vehicles?.[0];
+      let finalCategoryId = null;
+
+      if (vehicle && vehicle.plate) {
+        setVehicleData({
+          plate: vehicle.plate,
+          brand: { name: vehicle.brand_name },
+          model: { name: vehicle.model_name },
+          category: { name: vehicle.category_name },
+          color: vehicle.color ? { name: vehicle.color } : null
+        });
+
         const lookup = await lookupCustomerByPlate(vehicle.plate);
         setLookupResult(lookup);
 
@@ -798,87 +852,53 @@ const handleLookup = async (ticketNum?: number) => {
           setCategoryId(finalCategoryId);
           setCategoriaNome(lookup.vehicle.category.name);
           await loadTariffaOraria(finalCategoryId);
+          await loadWashServices();
         }
       }
-    }
 
-    // Fallback categoria se non trovata dal lookup targa
-    if (!finalCategoryId && vehicle?.category_name) {
-      const { data: catData } = await supabase
-        .from('vehicle_categories')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('name', vehicle.category_name)
-        .maybeSingle();
+      if (!finalCategoryId && vehicle?.category_name) {
+        const { data: catData } = await supabase
+          .from('vehicle_categories')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('name', vehicle.category_name)
+          .maybeSingle();
 
-      if (catData?.id) {
-        finalCategoryId = catData.id;
-        setCategoryId(finalCategoryId);
-        setCategoriaNome(vehicle.category_name);
-        await loadTariffaOraria(finalCategoryId);
+        if (catData?.id) {
+          finalCategoryId = catData.id;
+          setCategoryId(finalCategoryId);
+          setCategoriaNome(vehicle.category_name);
+          await loadTariffaOraria(finalCategoryId);
+          await loadWashServices();
+        }
       }
-    }
 
-    // 2. Mapping Lavaggi
-    let sessionWashServices = [];
-    if (openSession.parking_session_wash_services?.length > 0) {
-      sessionWashServices = openSession.parking_session_wash_services.map((ws: any) => ({
-        washServiceId: ws.wash_service_id,
-        quantity: ws.quantity || 1
-      }));
-    } else if (openSession.service_id) {
-      sessionWashServices = [{ washServiceId: openSession.service_id, quantity: 1 }];
-    }
-
-    setWashServices(sessionWashServices);
-
-    // 3. Caricamento catalogo lavaggi
-    if (finalCategoryId) {
-      console.log("🧼 Caricamento forzato catalogo per categoria:", finalCategoryId);
-      const services = await getAvailableWashServices(tenantId, finalCategoryId);
-
-      if (services && services.length > 0) {
-        setAvailableWashServices(services);
-
-        let tempWashTotal = 0;
-        sessionWashServices.forEach(ws => {
-          const match = services.find(s => s.washServiceId === ws.washServiceId);
-          if (match) {
-            const price = match.price ?? 0;
-            tempWashTotal += price;
-            console.log(`✅ MATCH TROVATO: ${match.serviceName || 'Servizio'} -> €${price}`);
-          }
-        });
-
-        console.log("💰 Totale lavaggi determinato:", tempWashTotal);
-        setWashTotal(tempWashTotal);
-      } else {
-        console.warn("⚠️ Nessun servizio lavaggio trovato nel catalogo per questa categoria");
-        setWashTotal(0);
+      let sessionWashServices = [];
+      if (openSession.parking_session_wash_services?.length > 0) {
+        sessionWashServices = openSession.parking_session_wash_services.map((ws: any) => ({
+          washServiceId: ws.wash_service_id,
+          quantity: ws.quantity || 1
+        }));
       }
+      setWashServices(sessionWashServices);
+
+      setOreSosta(calculateOreSosta(openSession.entry_time));
+      setStatus("ready");
+
+      if (openSession.customer_id) {
+        await loadFidelityData(openSession.customer_id);
+        await loadOutstandingDebts(openSession.customer_id);
+      }
+
+    } catch (err) {
+      console.error("🔥 ERRORE handleLookup:", err);
+      setStatus("error");
     }
-
-    setOreSosta(calculateOreSosta(openSession.entry_time));
-    setStatus("ready");
-
-    // ❌ RIMOSSO: il setTimeout che sovrascriveva il totale a 0
-    // Il ricalcolo ora è gestito SOLO dal useEffect di calculateFinalTotal
-
-    if (openSession.customer_id) {
-      await loadFidelityData(openSession.customer_id);
-      await loadOutstandingDebts(openSession.customer_id);
-    }
-
-  } catch (err) {
-    console.error("🔥 ERRORE handleLookup:", err);
-    setStatus("error");
-  }
-};
-
+  };
 
   /* =========================================
-     EFFECT PER INITIAL TICKET
-     ========================================= */
+      EFFECT PER INITIAL TICKET
+      ========================================= */
   useEffect(() => {
     if (initialTicket && tenantId) {
       handleLookup(Number(initialTicket));
@@ -886,47 +906,7 @@ const handleLookup = async (ticketNum?: number) => {
   }, [initialTicket, tenantId]);
 
   /* =========================================
-      PAGAMENTO DIFFERITO
-      ========================================= */
-  const handlePagamentoDifferito = async () => {
-    if (!session || !tenantId) return;
-
-    setIsProcessing(true);
-
-    try {
-      await closeParkingSession({
-        sessionId: session.id,
-        finalAmount: 0,
-      });
-
-      if (session.customer_id && calculatedPrice > 0) {
-        const insolutoData = {
-          tenant_id: tenantId,
-          customer_id: session.customer_id,
-          source_id: session.id,
-          source_type: 'parking',
-          amount: calculatedPrice,
-          description: `Sosta del ${new Date(session.entry_time).toLocaleDateString()} - Ticket #${session.ticket_number}`,
-          status: 'open',
-          created_at: new Date().toISOString()
-        };
-
-        await supabase.from('outstanding_payments').insert(insolutoData);
-      }
-
-      setStatus("paid");
-      setTimeout(() => navigate("/"), 2000);
-
-    } catch (err) {
-      console.error('❌ Errore pagamento differito:', err);
-      alert('Errore durante il pagamento differito: ' + (err as Error).message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  /* =========================================
-      PAGAMENTO + CHIUSURA SESSIONE
+      PAGAMENTO + CHIUSURA SESSIONE (CON STAMPA)
       ========================================= */
   const handlePayment = async () => {
     if (!session || !tenantId || isProcessing) return;
@@ -976,8 +956,13 @@ const handleLookup = async (ticketNum?: number) => {
         finalAmount: calculatedPrice,
       });
 
+      // 🔥 STAMPA IL TICKET DI USCITA
+      if (stampaAbilitata) {
+        await handlePrintTicket('uscita');
+      }
+
       setStatus("paid");
-      setTimeout(() => navigate("/"), 2000);
+      setTimeout(() => navigate("/dashboard"), 2000);
 
     } catch (err) {
       console.error('❌ Errore pagamento:', err);
@@ -989,17 +974,55 @@ const handleLookup = async (ticketNum?: number) => {
   };
 
   /* =========================================
+      PAGAMENTO DIFFERITO (CON STAMPA)
+      ========================================= */
+  const handlePagamentoDifferito = async () => {
+    if (!session || !tenantId) return;
+
+    setIsProcessing(true);
+
+    try {
+      await closeParkingSession({
+        sessionId: session.id,
+        finalAmount: 0,
+      });
+
+      if (session.customer_id && calculatedPrice > 0) {
+        const insolutoData = {
+          tenant_id: tenantId,
+          customer_id: session.customer_id,
+          source_id: session.id,
+          source_type: 'parking',
+          amount: calculatedPrice,
+          description: `Sosta del ${new Date(session.entry_time).toLocaleDateString()} - Ticket #${session.ticket_number}`,
+          status: 'open',
+          created_at: new Date().toISOString()
+        };
+
+        await supabase.from('outstanding_payments').insert(insolutoData);
+      }
+
+      // 🔥 STAMPA IL TICKET DI USCITA (differita)
+      if (stampaAbilitata) {
+        await handlePrintTicket('uscita');
+      }
+
+      setStatus("paid");
+      setTimeout(() => navigate("/dashboard"), 2000);
+
+    } catch (err) {
+      console.error('❌ Errore pagamento differito:', err);
+      alert('Errore durante il pagamento differito: ' + (err as Error).message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /* =========================================
       GESTIONE INSOLUTI
       ========================================= */
   const handleIncludeDebts = (include: boolean) => {
     setShowOutstandingModal(false);
-  };
-
-  /* =========================================
-      STAMPA TICKET
-      ========================================= */
-  const handlePrintTicket = async (tipo: string) => {
-    alert(`Funzione di stampa ticket ${tipo} da implementare`);
   };
 
   /* =========================================
@@ -1069,10 +1092,8 @@ const handleLookup = async (ticketNum?: number) => {
           </div>
         </header>
 
-        {/* ClientRecognitionBar - usa lookupResult */}
-        <ClientRecognitionBar 
-          result={lookupResult}
-        />
+        {/* ClientRecognitionBar */}
+        <ClientRecognitionBar result={lookupResult} />
 
         {/* GRILLE PRINCIPALE */}
         <main style={{ 
@@ -1320,7 +1341,7 @@ const handleLookup = async (ticketNum?: number) => {
               </div>
             )}
 
-            {/* SERVIZI LAVAGGIO - MODIFICATO con washServiceId */}
+            {/* SERVIZI LAVAGGIO */}
             <div style={{ marginBottom: "20px" }}>
               <h4 style={{ color: BLUE, marginBottom: "10px", fontSize: "14px", display: "flex", alignItems: "center", gap: "4px" }}>
                 <FaSoap /> Servizi Lavaggio
@@ -1529,7 +1550,7 @@ const handleLookup = async (ticketNum?: number) => {
                   </div>
                 </div>
 
-                {/* RIEPILOGO PAGAMENTO AGGIORNATO */}
+                {/* RIEPILOGO PAGAMENTO */}
                 <div style={{ 
                   background: BG_LIGHTER,
                   padding: "15px",
