@@ -1,6 +1,6 @@
 // src/pages/Admin/PricingModal.tsx
 import { useEffect, useState } from "react";
-import { getTariffaBase, saveTariffaBase } from "@/services/pricingService";
+import { getTariffaCompleta, saveTariffaBase } from "@/services/pricingService";
 import { getVehicleCategories } from "@/services/vehicleCategoryService";
 
 // Costanti colori
@@ -23,11 +23,14 @@ interface Category {
   tenant_id: string;
 }
 
+// 🔥 AGGIUNGO TUTTI I CAMPI NECESSARI
 interface TariffaValues {
   first_hour?: number;
   next_hours?: number;
   hourly?: number;
   night_hourly?: number;
+  day_max?: number;
+  overnight_24h?: number;
 }
 
 interface Props {
@@ -55,17 +58,19 @@ export default function PricingModal({ list, onClose }: Props) {
       const cats = await getVehicleCategories(list.tenant_id);
       setCategories(cats);
 
-      // Carica tariffe per ogni categoria usando getTariffaBase
+      // Carica tariffe per ogni categoria usando getTariffaCompleta
       const tariffeMap: Record<string, TariffaValues> = {};
       
       for (const cat of cats) {
-        const tariffa = await getTariffaBase(list.tenant_id, cat.id);
+        const tariffa = await getTariffaCompleta(list.tenant_id, cat.id);
         if (tariffa) {
           tariffeMap[cat.id] = {
-            first_hour: tariffa.first_hour,
-            next_hours: tariffa.next_hours,
+            first_hour: tariffa.first_hour || tariffa.firstHour,
+            next_hours: tariffa.next_hours || tariffa.nextHours,
             hourly: tariffa.hourly,
-            night_hourly: tariffa.night_hourly
+            night_hourly: tariffa.night_hourly || tariffa.nightHourly,
+            day_max: tariffa.day_max || tariffa.dailyMax,
+            overnight_24h: tariffa.overnight_24h || tariffa.overnightFixed
           };
         }
       }
@@ -97,7 +102,15 @@ export default function PricingModal({ list, onClose }: Props) {
     try {
       const values = tariffe[categoryId] || {};
 
-      await saveTariffaBase(list.id, categoryId, values);
+      // 🔥 Salva usando la funzione esistente
+      await saveTariffaBase(list.id, categoryId, {
+        first_hour: values.first_hour,
+        next_hours: values.next_hours,
+        hourly: values.hourly,
+        night_hourly: values.night_hourly,
+        day_max: values.day_max,
+        overnight_24h: values.overnight_24h
+      });
       
       setSavedRows((prev) => ({ ...prev, [categoryId]: true }));
       setError(null);
@@ -129,7 +142,7 @@ export default function PricingModal({ list, onClose }: Props) {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
           <h2 style={{ color: BLUE, margin: 0 }}>
-            ✏️ Tariffe base — {list.name}
+            ✏️ Tariffe — {list.name}
           </h2>
           <button onClick={onClose} style={closeButton}>✕</button>
         </div>
@@ -151,16 +164,12 @@ export default function PricingModal({ list, onClose }: Props) {
               <thead>
                 <tr style={headerRowStyle}>
                   <th style={thStyle}>Categoria</th>
-                  <th style={thStyle} colSpan={2}>🌞 FASCIA DIURNA</th>
-                  <th style={thStyle}>🌙 NOTTE (20-8)</th>
+                  <th style={thStyle}>🌞 Prima ora (€)</th>
+                  <th style={thStyle}>🌞 Ore succ. (€)</th>
+                  <th style={thStyle}>🌙 Notturna (€/h)</th>
+                  <th style={thStyle}>📅 Max giornaliero (€)</th>
+                  <th style={thStyle}>🛏️ Forfait notte (€)</th>
                   <th style={thStyle}></th>
-                </tr>
-                <tr style={headerRowStyle}>
-                  <th style={thSubStyle}></th>
-                  <th style={thSubStyle}>Prima ora (€)</th>
-                  <th style={thSubStyle}>Ore succ. (€)</th>
-                  <th style={thSubStyle}>Tariffa (€/h)</th>
-                  <th style={thSubStyle}></th>
                 </tr>
               </thead>
 
@@ -177,7 +186,7 @@ export default function PricingModal({ list, onClose }: Props) {
                       <td style={tdStyle}>
                         <input
                           type="number"
-                          step="0.01"
+                          step="0.50"
                           min="0"
                           disabled={isSaved}
                           value={t.first_hour ?? ""}
@@ -191,7 +200,7 @@ export default function PricingModal({ list, onClose }: Props) {
                       <td style={tdStyle}>
                         <input
                           type="number"
-                          step="0.01"
+                          step="0.50"
                           min="0"
                           disabled={isSaved}
                           value={t.next_hours ?? ""}
@@ -201,16 +210,44 @@ export default function PricingModal({ list, onClose }: Props) {
                         />
                       </td>
                       
-                      {/* Tariffa notturna */}
+                      {/* Tariffa notturna oraria */}
                       <td style={tdStyle}>
                         <input
                           type="number"
-                          step="0.01"
+                          step="0.50"
                           min="0"
                           disabled={isSaved}
                           value={t.night_hourly ?? ""}
                           onChange={(e) => handleInputChange(c.id, "night_hourly", e.target.value)}
                           placeholder="€/h"
+                          style={inputStyle}
+                        />
+                      </td>
+                      
+                      {/* 🔥 NUOVO: Massimo giornaliero */}
+                      <td style={tdStyle}>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          disabled={isSaved}
+                          value={t.day_max ?? ""}
+                          onChange={(e) => handleInputChange(c.id, "day_max", e.target.value)}
+                          placeholder="€"
+                          style={inputStyle}
+                        />
+                      </td>
+                      
+                      {/* 🔥 NUOVO: Forfait notturno */}
+                      <td style={tdStyle}>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          disabled={isSaved}
+                          value={t.overnight_24h ?? ""}
+                          onChange={(e) => handleInputChange(c.id, "overnight_24h", e.target.value)}
+                          placeholder="€"
                           style={inputStyle}
                         />
                       </td>
@@ -234,7 +271,8 @@ export default function PricingModal({ list, onClose }: Props) {
             </table>
             
             <p style={{ color: "#6b7280", fontSize: "12px", marginTop: "10px", textAlign: "center" }}>
-              ⏱️ Le tariffe notturne si applicano automaticamente dalle 20:00 alle 08:00
+              🌙 Tariffa notturna (oraria) si applica dalle 20:00 alle 08:00<br/>
+              🛏️ Forfait notturno: prezzo fisso per l'intera notte (es. 20€ indipendentemente dalle ore)
             </p>
           </div>
         )}
@@ -270,7 +308,7 @@ const modalContentStyle = {
   padding: "24px",
   borderRadius: "12px",
   width: "90%",
-  maxWidth: "800px",
+  maxWidth: "900px",
   maxHeight: "90vh",
   overflowY: "auto" as const,
   border: "1px solid rgba(255,255,255,0.1)",
@@ -324,15 +362,7 @@ const thStyle = {
   textAlign: "center" as const,
   borderBottom: "1px solid #333",
   fontWeight: "600",
-};
-
-const thSubStyle = {
-  padding: "8px 4px",
-  textAlign: "center" as const,
-  background: "#1a1f25",
-  color: "#9ca3af",
-  fontSize: "11px",
-  borderBottom: "1px solid #333",
+  fontSize: "12px",
 };
 
 const tdStyle = {

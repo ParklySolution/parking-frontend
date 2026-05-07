@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/services/supabase";
+import EditCategoryModal from "../Tenant/management/components/EditCategoryModal";
 
 interface Brand {
   id: string;
@@ -21,7 +22,7 @@ interface Model {
 }
 
 export default function VehicleModels() {
-  const { tenantId } = useParams(); // ⭐ tenantId dinamico dalla URL
+  const { tenantId } = useParams();
 
   const [models, setModels] = useState<Model[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -33,7 +34,11 @@ export default function VehicleModels() {
 
   const [loading, setLoading] = useState(true);
 
+  const [editingModel, setEditingModel] = useState<Model | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+
   const BLUE = "#3B82F6";
+  const GREEN = "#10b981";
 
   async function loadAll() {
     if (!tenantId) return;
@@ -91,7 +96,7 @@ export default function VehicleModels() {
       return;
     }
 
-    await supabase.from("vehicle_models").insert({
+    const { error } = await supabase.from("vehicle_models").insert({
       tenant_id: tenantId,
       name,
       brand_id: brandId,
@@ -99,15 +104,44 @@ export default function VehicleModels() {
       is_active: true,
     });
 
+    if (error) {
+      console.error("❌ Errore creazione modello:", error);
+      alert("Errore durante la creazione del modello");
+      return;
+    }
+
     setName("");
     setBrandId("");
     setCategoryId("");
     loadAll();
   }
 
+  async function handleUpdateCategory(modelId: string, newCategoryId: string) {
+    if (!tenantId) return;
+
+    const { error } = await supabase
+      .from("vehicle_models")
+      .update({ category_id: newCategoryId })
+      .eq("id", modelId)
+      .eq("tenant_id", tenantId);
+
+    if (error) {
+      console.error("❌ Errore aggiornamento categoria:", error);
+      alert("Errore durante l'aggiornamento della categoria");
+      throw error;
+    }
+
+    await loadAll();
+  }
+
+  function openEditModal(model: Model) {
+    setEditingModel(model);
+    setShowEditModal(true);
+  }
+
   useEffect(() => {
     loadAll();
-  }, [tenantId]); // ⭐ ricarica se cambia tenant
+  }, [tenantId]);
 
   if (loading)
     return (
@@ -116,7 +150,6 @@ export default function VehicleModels() {
 
   return (
     <div style={{ padding: "24px", color: "#fff" }}>
-      {/* HEADER */}
       <h2
         style={{
           fontSize: "28px",
@@ -223,7 +256,7 @@ export default function VehicleModels() {
         </button>
       </div>
 
-      {/* TABELLA */}
+      {/* TABELLA MODELLI */}
       <table
         style={{
           width: "100%",
@@ -245,6 +278,7 @@ export default function VehicleModels() {
             <th style={{ padding: "12px 16px" }}>Marca</th>
             <th style={{ padding: "12px 16px" }}>Categoria</th>
             <th style={{ padding: "12px 16px" }}>Attivo</th>
+            <th style={{ padding: "12px 16px" }}>Azioni</th>
           </tr>
         </thead>
 
@@ -262,10 +296,48 @@ export default function VehicleModels() {
               <td style={{ padding: "12px 16px" }}>
                 {m.is_active ? "✅" : "❌"}
               </td>
+
+              <td style={{ padding: "12px 16px" }}>
+                <button
+                  onClick={() => openEditModal(m)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    border: "none",
+                    background: GREEN,
+                    color: "#000",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontSize: "12px",
+                  }}
+                >
+                  ✏️ Modifica categoria
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      <EditCategoryModal
+        open={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingModel(null);
+        }}
+        model={
+          editingModel
+            ? {
+                id: editingModel.id,
+                name: editingModel.name,
+                brand_name: editingModel.brand?.name,
+                category_id: editingModel.category?.id,
+              }
+            : null
+        }
+        categories={categories}
+        onSave={handleUpdateCategory}
+      />
     </div>
   );
 }

@@ -147,13 +147,11 @@ export default function SessionsPage() {
         
         // Carica servizi lavaggio per le sessioni attive
         const activeWithServices = await Promise.all((active || []).map(async (session) => {
-          // Recupera wash services separatamente
           const { data: washServices } = await supabase
             .from('parking_session_wash_services')
             .select('*')
             .eq('parking_session_id', session.id);
           
-          // Recupera convenzione
           let conventionName = null;
           if (session.convention_id) {
             const { data: convention } = await supabase
@@ -175,7 +173,7 @@ export default function SessionsPage() {
         
         setActiveSessions(activeWithServices);
 
-        // Carica sessioni chiuse
+        // Carica sessioni chiuse (versione semplificata senza payments nella select)
         const { data: completed, error: completedError } = await supabase
           .from('parking_sessions')
           .select(`
@@ -192,10 +190,6 @@ export default function SessionsPage() {
               model_name,
               category_name,
               color
-            ),
-            payment_method:payment_methods (
-              name,
-              is_cash
             )
           `)
           .eq('tenant_id', tenantId)
@@ -205,13 +199,15 @@ export default function SessionsPage() {
 
         if (completedError) throw completedError;
         
-        // Carica wash services e convenzioni per le sessioni chiuse
-        const completedWithServices = await Promise.all((completed || []).map(async (session) => {
+        // Carica wash services, convenzioni e pagamenti per le sessioni chiuse
+        const completedWithDetails = await Promise.all((completed || []).map(async (session) => {
+          // Wash services
           const { data: washServices } = await supabase
             .from('parking_session_wash_services')
             .select('*')
             .eq('parking_session_id', session.id);
           
+          // Convenzione
           let conventionName = null;
           if (session.convention_id) {
             const { data: convention } = await supabase
@@ -222,16 +218,31 @@ export default function SessionsPage() {
             conventionName = convention?.name;
           }
           
+          // Pagamento (caricato separatamente)
+          const { data: paymentData } = await supabase
+            .from('payments')
+            .select(`
+              amount,
+              payment_method:payment_methods (
+                name,
+                is_cash
+              )
+            `)
+            .eq('reference_id', session.id)
+            .eq('reference_type', 'parking_session')
+            .maybeSingle();
+          
           return {
             ...session,
             status: 'completed',
             service_type: getServiceType({ ...session, parking_session_wash_services: washServices }),
             convention_name: conventionName,
-            parking_session_wash_services: washServices || []
+            parking_session_wash_services: washServices || [],
+            payment_method: paymentData?.payment_method || null
           };
         }));
         
-        setCompletedSessions(completedWithServices);
+        setCompletedSessions(completedWithDetails);
 
       } catch (error) {
         console.error('❌ Errore caricamento sessioni:', error);

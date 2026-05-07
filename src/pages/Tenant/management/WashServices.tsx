@@ -14,6 +14,10 @@ interface WashService {
   triggers_fidelity: boolean;
   is_active: boolean;
   tenant_id: string;
+  base_price?: number;
+  parking_bonus_type?: string | null;
+  parking_bonus_value?: number | null;
+  parking_bonus_hours?: number | null;  // 🔥 NUOVO CAMPO
 }
 
 interface VehicleCategory {
@@ -156,6 +160,10 @@ export default function TenantWashServices() {
         code: "",
         description: "",
         base_duration_minutes: 0,
+        base_price: 0,
+        parking_bonus_hours: 0,  // 🔥 NUOVO
+        parking_bonus_type: "",
+        parking_bonus_value: 0,
         triggers_fidelity: false,
         is_active: true,
       }
@@ -163,71 +171,72 @@ export default function TenantWashServices() {
   }
 
   /* ======================================================
-   SALVA SERVIZIO (VERSIONE CORRETTA)
-   ====================================================== */
-async function saveService(form: Partial<WashService>) {
-  if (!tenantId) {
-    setError("Tenant ID non trovato");
-    return;
-  }
+     SALVA SERVIZIO (VERSIONE CORRETTA)
+     ====================================================== */
+  async function saveService(form: Partial<WashService>) {
+    if (!tenantId) {
+      setError("Tenant ID non trovato");
+      return;
+    }
 
-  console.log("🔍 FORM RICEVUTO:", form);
-  console.log("🔍 TENANT ID:", tenantId);
+    console.log("🔍 FORM RICEVUTO:", form);
+    console.log("🔍 TENANT ID:", tenantId);
 
-  // 🔥 VALIDAZIONE: campi obbligatori (ORA CON PREZZO)
-  if (!form.name || !form.code || !form.base_duration_minutes || !form.base_price) {
-    console.log("❌ Validazione fallita:", {
+    // 🔥 VALIDAZIONE: campi obbligatori (ORA CON PREZZO)
+    if (!form.name || !form.code || !form.base_duration_minutes || !form.base_price) {
+      console.log("❌ Validazione fallita:", {
+        name: form.name,
+        code: form.code,
+        base_duration_minutes: form.base_duration_minutes,
+        base_price: form.base_price
+      });
+      setError("Nome, Codice, Durata e Prezzo base sono obbligatori");
+      return;
+    }
+
+    // Costruisci payload con TUTTI i campi
+    const payload = {
+      tenant_id: tenantId,
       name: form.name,
       code: form.code,
-      base_duration_minutes: form.base_duration_minutes,
-      base_price: form.base_price
-    });
-    setError("Nome, Codice, Durata e Prezzo base sono obbligatori");
-    return;
-  }
+      description: form.description || "",
+      base_price: Number(form.base_price),
+      base_duration_minutes: Number(form.base_duration_minutes),
+      parking_bonus_hours: form.parking_bonus_hours ? Number(form.parking_bonus_hours) : null, // 🔥 NUOVO
+      parking_bonus_type: form.parking_bonus_type || null,
+      parking_bonus_value: form.parking_bonus_value ? Number(form.parking_bonus_value) : null,
+      triggers_fidelity: form.triggers_fidelity || false,
+      is_active: form.is_active ?? true,
+    };
 
-  // Costruisci payload con TUTTI i campi
-  const payload = {
-    tenant_id: tenantId,
-    name: form.name,
-    code: form.code,
-    description: form.description || "",
-    base_price: Number(form.base_price),
-    base_duration_minutes: Number(form.base_duration_minutes),
-    parking_bonus_type: form.parking_bonus_type || null,
-    parking_bonus_value: form.parking_bonus_value ? Number(form.parking_bonus_value) : null,
-    triggers_fidelity: form.triggers_fidelity || false,
-    is_active: form.is_active ?? true,
-  };
+    console.log("📦 PAYLOAD INVIATO:", payload);
 
-  console.log("📦 PAYLOAD INVIATO:", payload);
+    try {
+      let result;
 
-  try {
-    let result;
+      if (form.id) {
+        result = await supabase
+          .from("wash_service_catalog")
+          .update(payload)
+          .eq("id", form.id);
+      } else {
+        result = await supabase.from("wash_service_catalog").insert(payload);
+      }
 
-    if (form.id) {
-      result = await supabase
-        .from("wash_service_catalog")
-        .update(payload)
-        .eq("id", form.id);
-    } else {
-      result = await supabase.from("wash_service_catalog").insert(payload);
+      if (result.error) {
+        console.error("❌ ERRORE DB:", result.error);
+        throw result.error;
+      }
+
+      console.log("✅ SUCCESSO!");
+      setDrawerEditService(null);
+      await fetchAll();
+      setError(null);
+    } catch (err) {
+      console.error("❌ ECCEZIONE:", err);
+      setError("Errore durante il salvataggio del servizio: " + (err as any).message);
     }
-
-    if (result.error) {
-      console.error("❌ ERRORE DB:", result.error);
-      throw result.error;
-    }
-
-    console.log("✅ SUCCESSO!");
-    setDrawerEditService(null);
-    await fetchAll();
-    setError(null);
-  } catch (err) {
-    console.error("❌ ECCEZIONE:", err);
-    setError("Errore durante il salvataggio del servizio: " + (err as any).message);
   }
-}
 
   /* ======================================================
      UI STATES
@@ -329,6 +338,18 @@ async function saveService(form: Partial<WashService>) {
               </div>
 
               <div style={cardInfoRow}>
+                <span>Prezzo base:</span>
+                <strong>€ {svc.base_price?.toFixed(2) || '0'}</strong>
+              </div>
+
+              {svc.parking_bonus_hours && svc.parking_bonus_hours > 0 && (
+                <div style={cardInfoRow}>
+                  <span>🎁 Ore omaggio:</span>
+                  <strong>{svc.parking_bonus_hours} h</strong>
+                </div>
+              )}
+
+              <div style={cardInfoRow}>
                 <span>Fidelity:</span>
                 <strong>{svc.triggers_fidelity ? "Sì" : "No"}</strong>
               </div>
@@ -372,36 +393,36 @@ async function saveService(form: Partial<WashService>) {
           </div>
 
           <table style={priceTable}>
-  <thead>
-    <tr>
-      <th style={priceTableTh}>Categoria</th>
-      <th style={priceTableTh}>Prezzo</th>
-      <th style={priceTableTh}>Durata</th>
-      <th style={priceTableTh}>Punti</th>
-      <th style={priceTableTh}></th>
-    </tr>
-  </thead>
-  <tbody>
-    {prices
-      .filter((p) => p.wash_service_id === drawerService.id)
-      .map((p) => {
-        const cat = categories.find((c) => c.id === p.vehicle_category_id);
-        return (
-          <tr key={p.id}>
-            <td style={priceTableTd}>{cat?.name || "-"}</td>
-            <td style={priceTableTd}>€ {p.price}</td>
-            <td style={priceTableTd}>{p.duration_minutes} min</td>
-            <td style={priceTableTd}>{p.fidelity_points}</td>
-            <td style={priceTableTd}>
-              <button style={btnSmall} onClick={() => openPriceDrawer(p)}>
-                Modifica
-              </button>
-            </td>
-          </tr>
-        );
-      })}
-  </tbody>
-</table>
+            <thead>
+              <tr>
+                <th style={priceTableTh}>Categoria</th>
+                <th style={priceTableTh}>Prezzo</th>
+                <th style={priceTableTh}>Durata</th>
+                <th style={priceTableTh}>Punti</th>
+                <th style={priceTableTh}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {prices
+                .filter((p) => p.wash_service_id === drawerService.id)
+                .map((p) => {
+                  const cat = categories.find((c) => c.id === p.vehicle_category_id);
+                  return (
+                    <tr key={p.id}>
+                      <td style={priceTableTd}>{cat?.name || "-"}</td>
+                      <td style={priceTableTd}>€ {p.price}</td>
+                      <td style={priceTableTd}>{p.duration_minutes} min</td>
+                      <td style={priceTableTd}>{p.fidelity_points}</td>
+                      <td style={priceTableTd}>
+                        <button style={btnSmall} onClick={() => openPriceDrawer(p)}>
+                          Modifica
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
         </Drawer>
       )}
 
@@ -596,6 +617,21 @@ function ServiceForm({
         onChange={(e) => update("base_duration_minutes", e.target.value)}
         required
       />
+
+      {/* 🔥 NUOVO CAMPO: Ore sosta omaggio */}
+      <label style={label}>🎁 Ore sosta omaggio</label>
+      <input
+        style={input}
+        type="number"
+        step="0.5"
+        min="0"
+        value={form.parking_bonus_hours || 0}
+        onChange={(e) => update("parking_bonus_hours", parseFloat(e.target.value) || 0)}
+        placeholder="Es. 2 (ore gratuite di parcheggio)"
+      />
+      <div style={{ fontSize: "11px", color: "#9ca3af", marginTop: "-8px", marginBottom: "8px" }}>
+        Ore di parcheggio gratuite per chi acquista questo lavaggio
+      </div>
 
       <label style={label}>Tipo Bonus (opzionale)</label>
       <input
