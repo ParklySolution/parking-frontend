@@ -5,7 +5,6 @@ import {
   FaCar, 
   FaClock, 
   FaCheckCircle, 
-  FaTimesCircle, 
   FaSearch,
   FaFilter,
   FaSync,
@@ -15,7 +14,10 @@ import {
   FaUser,
   FaCalendarAlt,
   FaIdCard,
-  FaArrowLeft
+  FaArrowLeft,
+  FaStickyNote,
+  FaSoap,
+  FaFileContract
 } from "react-icons/fa";
 
 // Colori
@@ -34,6 +36,11 @@ interface ParkingSession {
   status: 'active' | 'completed';
   final_amount: number | null;
   customer_id: string | null;
+  notes?: string | null;
+  payment_method?: {
+    name: string;
+    is_cash?: boolean;
+  } | null;
   customer?: {
     first_name: string;
     last_name: string;
@@ -47,6 +54,13 @@ interface ParkingSession {
     category_name: string;
     color: string;
   }>;
+  parking_session_wash_services?: Array<{
+    wash_service_name?: string;
+    wash_service_type?: string;
+    amount: number;
+  }>;
+  convention_name?: string;
+  service_type?: 'parking' | 'convention' | 'wash';
 }
 
 export default function SessionsPage() {
@@ -56,6 +70,7 @@ export default function SessionsPage() {
   const [activeSessions, setActiveSessions] = useState<ParkingSession[]>([]);
   const [completedSessions, setCompletedSessions] = useState<ParkingSession[]>([]);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('active');
+  const [serviceFilter, setServiceFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSession, setSelectedSession] = useState<ParkingSession | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -91,95 +106,145 @@ export default function SessionsPage() {
     loadTenant();
   }, [navigate]);
 
-  // Carica sessioni
-useEffect(() => {
-  if (!tenantId) return;
-
-  const loadSessions = async () => {
-    setLoading(true);
-    try {
-      // Carica sessioni attive (status = 'open')
-      const { data: active, error: activeError } = await supabase
-        .from('parking_sessions')
-        .select(`
-          *,
-          customer:customers (
-            first_name,
-            last_name,
-            email,
-            phone
-          ),
-          parking_session_vehicles (
-            plate,
-            brand_name,
-            model_name,
-            category_name,
-            color
-          )
-        `)
-        .eq('tenant_id', tenantId)
-        .eq('status', 'open')  // Cambiato da 'active' a 'open'
-        .order('entry_time', { ascending: false });
-
-      if (activeError) throw activeError;
-      
-      // Mappa i dati per uniformare lo status
-      const mappedActive = (active || []).map(session => ({
-        ...session,
-        status: 'active' // Convertiamo 'open' in 'active' per l'interfaccia
-      }));
-      
-      setActiveSessions(mappedActive);
-      console.log('✅ Sessioni attive caricate:', mappedActive.length);
-
-      // Carica ultime 50 sessioni chiuse (status = 'closed')
-      const { data: completed, error: completedError } = await supabase
-        .from('parking_sessions')
-        .select(`
-          *,
-          customer:customers (
-            first_name,
-            last_name,
-            email,
-            phone
-          ),
-          parking_session_vehicles (
-            plate,
-            brand_name,
-            model_name,
-            category_name,
-            color
-          )
-        `)
-        .eq('tenant_id', tenantId)
-        .eq('status', 'closed')  // Cambiato da 'completed' a 'closed'
-        .order('exit_time', { ascending: false })
-        .limit(50);
-
-      if (completedError) throw completedError;
-      
-      // Mappa i dati per uniformare lo status
-      const mappedCompleted = (completed || []).map(session => ({
-        ...session,
-        status: 'completed' // Convertiamo 'closed' in 'completed' per l'interfaccia
-      }));
-      
-      setCompletedSessions(mappedCompleted);
-      console.log('✅ Sessioni chiuse caricate:', mappedCompleted.length);
-
-    } catch (error) {
-      console.error('❌ Errore caricamento sessioni:', error);
-    } finally {
-      setLoading(false);
-    }
+  // Determina il tipo di servizio della sessione
+  const getServiceType = (session: any): 'parking' | 'convention' | 'wash' => {
+    if (session.convention_id) return 'convention';
+    if (session.parking_session_wash_services?.length > 0) return 'wash';
+    return 'parking';
   };
 
-  loadSessions();
+  // Carica sessioni
+  useEffect(() => {
+    if (!tenantId) return;
 
-  // Refresh ogni 30 secondi
-  const interval = setInterval(loadSessions, 30000);
-  return () => clearInterval(interval);
-}, [tenantId]);
+    const loadSessions = async () => {
+      setLoading(true);
+      try {
+        // Carica sessioni attive
+        const { data: active, error: activeError } = await supabase
+          .from('parking_sessions')
+          .select(`
+            *,
+            customer:customers (
+              first_name,
+              last_name,
+              email,
+              phone
+            ),
+            parking_session_vehicles (
+              plate,
+              brand_name,
+              model_name,
+              category_name,
+              color
+            )
+          `)
+          .eq('tenant_id', tenantId)
+          .eq('status', 'open')
+          .order('entry_time', { ascending: false });
+
+        if (activeError) throw activeError;
+        
+        // Carica servizi lavaggio per le sessioni attive
+        const activeWithServices = await Promise.all((active || []).map(async (session) => {
+          // Recupera wash services separatamente
+          const { data: washServices } = await supabase
+            .from('parking_session_wash_services')
+            .select('*')
+            .eq('parking_session_id', session.id);
+          
+          // Recupera convenzione
+          let conventionName = null;
+          if (session.convention_id) {
+            const { data: convention } = await supabase
+              .from('conventions')
+              .select('name')
+              .eq('id', session.convention_id)
+              .single();
+            conventionName = convention?.name;
+          }
+          
+          return {
+            ...session,
+            status: 'active',
+            service_type: getServiceType({ ...session, parking_session_wash_services: washServices }),
+            convention_name: conventionName,
+            parking_session_wash_services: washServices || []
+          };
+        }));
+        
+        setActiveSessions(activeWithServices);
+
+        // Carica sessioni chiuse
+        const { data: completed, error: completedError } = await supabase
+          .from('parking_sessions')
+          .select(`
+            *,
+            customer:customers (
+              first_name,
+              last_name,
+              email,
+              phone
+            ),
+            parking_session_vehicles (
+              plate,
+              brand_name,
+              model_name,
+              category_name,
+              color
+            ),
+            payment_method:payment_methods (
+              name,
+              is_cash
+            )
+          `)
+          .eq('tenant_id', tenantId)
+          .eq('status', 'closed')
+          .order('exit_time', { ascending: false })
+          .limit(50);
+
+        if (completedError) throw completedError;
+        
+        // Carica wash services e convenzioni per le sessioni chiuse
+        const completedWithServices = await Promise.all((completed || []).map(async (session) => {
+          const { data: washServices } = await supabase
+            .from('parking_session_wash_services')
+            .select('*')
+            .eq('parking_session_id', session.id);
+          
+          let conventionName = null;
+          if (session.convention_id) {
+            const { data: convention } = await supabase
+              .from('conventions')
+              .select('name')
+              .eq('id', session.convention_id)
+              .single();
+            conventionName = convention?.name;
+          }
+          
+          return {
+            ...session,
+            status: 'completed',
+            service_type: getServiceType({ ...session, parking_session_wash_services: washServices }),
+            convention_name: conventionName,
+            parking_session_wash_services: washServices || []
+          };
+        }));
+        
+        setCompletedSessions(completedWithServices);
+
+      } catch (error) {
+        console.error('❌ Errore caricamento sessioni:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSessions();
+
+    const interval = setInterval(loadSessions, 30000);
+    return () => clearInterval(interval);
+  }, [tenantId]);
 
   // Formatta data/ora
   const formatDateTime = (dateString: string) => {
@@ -221,7 +286,19 @@ useEffect(() => {
     return `${diffMinutes}m`;
   };
 
-  // Filtra sessioni in base a ricerca e filtro
+  // Ottieni il nome del servizio per la visualizzazione
+  const getServiceDisplay = (session: ParkingSession) => {
+    if (session.service_type === 'convention') {
+      return { icon: <FaFileContract size={12} />, text: session.convention_name || 'Convenzione', color: ORANGE };
+    }
+    if (session.service_type === 'wash') {
+      const washNames = session.parking_session_wash_services?.map(w => w.wash_service_name || 'Lavaggio').join(', ');
+      return { icon: <FaSoap size={12} />, text: washNames || 'Lavaggio', color: BLUE };
+    }
+    return { icon: <FaCar size={12} />, text: 'Sosta', color: GREEN };
+  };
+
+  // Filtra sessioni
   const getFilteredSessions = () => {
     let sessions: ParkingSession[] = [];
     
@@ -232,11 +309,17 @@ useEffect(() => {
       sessions = [...sessions, ...completedSessions];
     }
 
+    // Filtro per tipo servizio
+    if (serviceFilter !== 'all') {
+      sessions = sessions.filter(s => s.service_type === serviceFilter);
+    }
+
+    // Filtro per ricerca
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       sessions = sessions.filter(s => 
         s.ticket_number.toString().includes(term) ||
-        s.parking_session_vehicles?.[0]?.plate.toLowerCase().includes(term) ||
+        s.parking_session_vehicles?.[0]?.plate?.toLowerCase().includes(term) ||
         s.customer?.first_name?.toLowerCase().includes(term) ||
         s.customer?.last_name?.toLowerCase().includes(term) ||
         s.customer?.email?.toLowerCase().includes(term)
@@ -329,9 +412,9 @@ useEffect(() => {
         }}>
           <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
             {/* Filtro stato */}
-            <div style={{ flex: 1, minWidth: "200px" }}>
+            <div style={{ flex: 1, minWidth: "150px" }}>
               <label style={{ color: "#9ca3af", fontSize: "12px", marginBottom: "5px", display: "block" }}>
-                <FaFilter /> Filtra per stato
+                <FaFilter /> Stato
               </label>
               <select
                 value={filter}
@@ -348,7 +431,32 @@ useEffect(() => {
               >
                 <option value="all">Tutte le soste</option>
                 <option value="active">Soste attive</option>
-                <option value="completed">Soste chiuse</option>
+                <option value="completed">Soste concluse</option>
+              </select>
+            </div>
+
+            {/* Filtro per servizio */}
+            <div style={{ flex: 1, minWidth: "150px" }}>
+              <label style={{ color: "#9ca3af", fontSize: "12px", marginBottom: "5px", display: "block" }}>
+                <FaFilter /> Tipo servizio
+              </label>
+              <select
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  background: BG_LIGHTER,
+                  border: "1px solid #333",
+                  borderRadius: "6px",
+                  color: "#fff",
+                  fontSize: "14px"
+                }}
+              >
+                <option value="all">Tutti i servizi</option>
+                <option value="parking">🚗 Sosta</option>
+                <option value="convention">📄 Convenzione</option>
+                <option value="wash">🧼 Lavaggio</option>
               </select>
             </div>
 
@@ -390,7 +498,7 @@ useEffect(() => {
               </span>
             </div>
             <div>
-              <span style={{ color: "#9ca3af" }}>Soste chiuse (ultime 50):</span>
+              <span style={{ color: "#9ca3af" }}>Soste concluse (ultime 50):</span>
               <span style={{ marginLeft: "10px", color: BLUE, fontWeight: "bold" }}>
                 {completedSessions.length}
               </span>
@@ -409,6 +517,8 @@ useEffect(() => {
           {filteredSessions.map((session) => {
             const vehicle = session.parking_session_vehicles?.[0];
             const isActive = session.status === 'active';
+            const serviceInfo = getServiceDisplay(session);
+            const hasNotes = session.notes && session.notes.trim().length > 0;
             
             return (
               <div
@@ -447,14 +557,29 @@ useEffect(() => {
                 </div>
 
                 {/* Info principali */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "15px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "15px" }}>
                   {/* Ticket */}
                   <div>
                     <div style={{ color: "#9ca3af", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
                       <FaTicketAlt size={10} /> Ticket
                     </div>
-                    <div style={{ fontWeight: "bold", fontSize: "16px" }}>
+                    <div style={{ fontWeight: "bold", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
                       #{session.ticket_number}
+                      {hasNotes && (
+                        <span style={{ color: ORANGE, fontSize: "12px", cursor: "help" }} title={session.notes || ''}>
+                          📝
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Servizio */}
+                  <div>
+                    <div style={{ color: "#9ca3af", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
+                      {serviceInfo.icon} Servizio
+                    </div>
+                    <div style={{ fontWeight: "bold", fontSize: "13px", color: serviceInfo.color }}>
+                      {serviceInfo.text}
                     </div>
                   </div>
 
@@ -463,7 +588,7 @@ useEffect(() => {
                     <div style={{ color: "#9ca3af", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
                       <FaIdCard size={10} /> Targa
                     </div>
-                    <div style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: "16px" }}>
+                    <div style={{ fontWeight: "bold", fontFamily: "monospace", fontSize: "14px" }}>
                       {vehicle?.plate || 'N/D'}
                     </div>
                   </div>
@@ -471,10 +596,10 @@ useEffect(() => {
                   {/* Veicolo */}
                   <div>
                     <div style={{ color: "#9ca3af", fontSize: "11px" }}>Veicolo</div>
-                    <div>
+                    <div style={{ fontSize: "13px" }}>
                       {vehicle?.brand_name} {vehicle?.model_name}
                     </div>
-                    <div style={{ fontSize: "11px", color: "#9ca3af" }}>
+                    <div style={{ fontSize: "10px", color: "#9ca3af" }}>
                       {vehicle?.category_name} {vehicle?.color && `- ${vehicle.color}`}
                     </div>
                   </div>
@@ -484,8 +609,8 @@ useEffect(() => {
                     <div style={{ color: "#9ca3af", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
                       <FaCalendarAlt size={10} /> Ingresso
                     </div>
-                    <div>{formatTime(session.entry_time)}</div>
-                    <div style={{ fontSize: "11px", color: "#9ca3af" }}>
+                    <div style={{ fontSize: "13px" }}>{formatTime(session.entry_time)}</div>
+                    <div style={{ fontSize: "10px", color: "#9ca3af" }}>
                       {formatDate(session.entry_time)}
                     </div>
                   </div>
@@ -495,38 +620,26 @@ useEffect(() => {
                     {isActive ? (
                       <>
                         <div style={{ color: "#9ca3af", fontSize: "11px" }}>Durata</div>
-                        <div style={{ color: GREEN, fontWeight: "bold" }}>
+                        <div style={{ color: GREEN, fontWeight: "bold", fontSize: "13px" }}>
                           {calculateDuration(session.entry_time)}
                         </div>
                       </>
                     ) : (
                       <>
                         <div style={{ color: "#9ca3af", fontSize: "11px" }}>Uscita</div>
-                        <div>{session.exit_time ? formatTime(session.exit_time) : 'N/D'}</div>
-                        <div style={{ fontSize: "11px", color: "#9ca3af" }}>
+                        <div style={{ fontSize: "13px" }}>{session.exit_time ? formatTime(session.exit_time) : 'N/D'}</div>
+                        <div style={{ fontSize: "10px", color: "#9ca3af" }}>
                           {session.exit_time ? formatDate(session.exit_time) : ''}
                         </div>
                       </>
                     )}
                   </div>
 
-                  {/* Cliente */}
-                  {session.customer && (
-                    <div>
-                      <div style={{ color: "#9ca3af", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
-                        <FaUser size={10} /> Cliente
-                      </div>
-                      <div>
-                        {session.customer.first_name} {session.customer.last_name}
-                      </div>
-                    </div>
-                  )}
-
                   {/* Importo */}
                   {!isActive && session.final_amount !== null && (
                     <div>
                       <div style={{ color: "#9ca3af", fontSize: "11px" }}>Importo</div>
-                      <div style={{ color: BLUE, fontWeight: "bold" }}>
+                      <div style={{ color: BLUE, fontWeight: "bold", fontSize: "13px" }}>
                         € {session.final_amount.toFixed(2)}
                       </div>
                     </div>
@@ -545,7 +658,7 @@ useEffect(() => {
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    fontSize: "13px"
+                    fontSize: "12px"
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -575,7 +688,7 @@ useEffect(() => {
                   : filter === 'active' 
                     ? "Non ci sono soste attive al momento"
                     : filter === 'completed'
-                      ? "Non ci sono soste chiuse negli ultimi record"
+                      ? "Non ci sono soste concluse negli ultimi record"
                       : "Non ci sono soste nel sistema"}
               </p>
             </div>
@@ -589,7 +702,6 @@ useEffect(() => {
           session={selectedSession}
           onClose={() => setShowDetailModal(false)}
           onViewPayment={() => {
-            // Naviga alla pagina di pagamento se la sosta è attiva
             if (selectedSession.status === 'active') {
               navigate('/exit', { state: { ticket: selectedSession.ticket_number } });
             }
@@ -604,6 +716,18 @@ useEffect(() => {
 // Modal Dettaglio Sosta
 function SessionDetailModal({ session, onClose, onViewPayment }: any) {
   const vehicle = session.parking_session_vehicles?.[0];
+  const washServices = session.parking_session_wash_services || [];
+
+  const getServiceDisplay = (s: any) => {
+    if (s.service_type === 'convention') {
+      return { icon: <FaFileContract size={14} />, text: s.convention_name || 'Convenzione', color: ORANGE };
+    }
+    if (s.service_type === 'wash') {
+      const washNames = s.parking_session_wash_services?.map((w: any) => w.wash_service_name || 'Lavaggio').join(', ');
+      return { icon: <FaSoap size={14} />, text: washNames || 'Lavaggio', color: BLUE };
+    }
+    return { icon: <FaCar size={14} />, text: 'Sosta', color: GREEN };
+  };
 
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString('it-IT', {
@@ -623,9 +747,10 @@ function SessionDetailModal({ session, onClose, onViewPayment }: any) {
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-    
     return `${diffHours}h ${diffMinutes}m ${diffSeconds}s`;
   };
+
+  const serviceInfo = getServiceDisplay(session);
 
   return (
     <div style={{
@@ -678,7 +803,23 @@ function SessionDetailModal({ session, onClose, onViewPayment }: any) {
               background: session.status === 'active' ? GREEN : RED
             }} />
             <span style={{ fontWeight: "bold" }}>
-                            {session.status === 'active' ? 'SOSTA ATTIVA' : 'SOSTA CONCLUS'}
+              {session.status === 'active' ? '🟢 SOSTA ATTIVA' : '🔴 SOSTA CONCLUSA'}
+            </span>
+          </div>
+
+          {/* Tipo servizio */}
+          <div style={{ 
+            padding: "10px", 
+            background: BG_LIGHTER, 
+            borderRadius: "8px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            border: `1px solid ${serviceInfo.color}`
+          }}>
+            {serviceInfo.icon}
+            <span style={{ fontWeight: "bold", color: serviceInfo.color }}>
+              {serviceInfo.text}
             </span>
           </div>
 
@@ -703,7 +844,7 @@ function SessionDetailModal({ session, onClose, onViewPayment }: any) {
               <div style={{ color: "#9ca3af", fontSize: "12px", marginBottom: "5px" }}>
                 <FaIdCard /> Targa
               </div>
-              <div style={{ fontSize: "24px", fontWeight: "bold", fontFamily: "monospace" }}>
+              <div style={{ fontSize: "20px", fontWeight: "bold", fontFamily: "monospace" }}>
                 {vehicle?.plate || 'N/D'}
               </div>
             </div>
@@ -734,36 +875,61 @@ function SessionDetailModal({ session, onClose, onViewPayment }: any) {
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "#9ca3af" }}>Colore</div>
-                  <div>{vehicle.color || 'N/D'}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    {vehicle.color && vehicle.color !== 'N/D' && (
+                      <div style={{
+                        width: "16px",
+                        height: "16px",
+                        borderRadius: "4px",
+                        background: vehicle.color,
+                        border: "1px solid #666"
+                      }} />
+                    )}
+                    {vehicle.color || 'N/D'}
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Cliente */}
-          {session.customer && (
+          {/* Note */}
+          {session.notes && (
+            <div style={{ 
+              padding: "15px", 
+              background: `${ORANGE}20`, 
+              borderRadius: "8px",
+              border: `1px solid ${ORANGE}`
+            }}>
+              <div style={{ color: ORANGE, fontSize: "12px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <FaStickyNote /> Note
+              </div>
+              <div style={{ fontSize: "14px", color: "#fff" }}>
+                {session.notes}
+              </div>
+            </div>
+          )}
+
+          {/* Servizi lavaggio */}
+          {washServices.length > 0 && (
             <div style={{ 
               padding: "15px", 
               background: BG_LIGHTER, 
               borderRadius: "8px" 
             }}>
-              <div style={{ color: "#9ca3af", fontSize: "12px", marginBottom: "10px" }}>
-                <FaUser /> Cliente
+              <div style={{ color: BLUE, fontSize: "12px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <FaSoap /> Servizi Lavaggio
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <div>
-                  <div style={{ fontSize: "11px", color: "#9ca3af" }}>Nome</div>
-                  <div>{session.customer.first_name} {session.customer.last_name}</div>
+              {washServices.map((wash: any, idx: number) => (
+                <div key={idx} style={{ 
+                  display: "flex", 
+                  justifyContent: "space-between",
+                  padding: "8px 0",
+                  borderBottom: idx < washServices.length - 1 ? "1px solid #333" : "none"
+                }}>
+                  <span>{wash.wash_service_name || 'Lavaggio'}</span>
+                  <span style={{ color: BLUE }}>€ {wash.amount?.toFixed(2) || '0.00'}</span>
                 </div>
-                <div>
-                  <div style={{ fontSize: "11px", color: "#9ca3af" }}>Email</div>
-                  <div>{session.customer.email || 'N/D'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: "11px", color: "#9ca3af" }}>Telefono</div>
-                  <div>{session.customer.phone || 'N/D'}</div>
-                </div>
-              </div>
+              ))}
             </div>
           )}
 
@@ -779,24 +945,24 @@ function SessionDetailModal({ session, onClose, onViewPayment }: any) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
               <div>
                 <div style={{ fontSize: "11px", color: "#9ca3af" }}>Ingresso</div>
-                <div style={{ fontWeight: "bold" }}>{formatDateTime(session.entry_time)}</div>
+                <div style={{ fontWeight: "bold", fontSize: "13px" }}>{formatDateTime(session.entry_time)}</div>
               </div>
               {session.exit_time && (
                 <div>
                   <div style={{ fontSize: "11px", color: "#9ca3af" }}>Uscita</div>
-                  <div style={{ fontWeight: "bold" }}>{formatDateTime(session.exit_time)}</div>
+                  <div style={{ fontWeight: "bold", fontSize: "13px" }}>{formatDateTime(session.exit_time)}</div>
                 </div>
               )}
             </div>
             <div style={{ marginTop: "10px", padding: "10px", background: BG_DARK, borderRadius: "6px" }}>
               <div style={{ fontSize: "11px", color: "#9ca3af" }}>Durata totale</div>
-              <div style={{ fontSize: "18px", fontWeight: "bold", color: BLUE }}>
+              <div style={{ fontSize: "16px", fontWeight: "bold", color: BLUE }}>
                 {calculateDuration(session.entry_time, session.exit_time)}
               </div>
             </div>
           </div>
 
-          {/* Importo */}
+          {/* Importo + Metodo pagamento */}
           {session.final_amount !== null && (
             <div style={{ 
               padding: "15px", 
@@ -810,6 +976,22 @@ function SessionDetailModal({ session, onClose, onViewPayment }: any) {
               <div style={{ fontSize: "28px", fontWeight: "bold", color: BLUE }}>
                 € {session.final_amount.toFixed(2)}
               </div>
+              {session.payment_method && (
+                <div style={{ 
+                  marginTop: "10px", 
+                  padding: "8px", 
+                  background: BG_DARK, 
+                  borderRadius: "6px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}>
+                  <span>💳 Pagato con:</span>
+                  <span style={{ fontWeight: "bold" }}>
+                    {session.payment_method.is_cash ? 'Contanti' : session.payment_method.name || 'Carta'}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

@@ -1342,53 +1342,59 @@ export default function Ingresso() {
             </div>
 
             {/* Riepilogo extra */}
-            {(washServices.length > 0 || selectedConvention) && (
-              <div style={{
-                marginTop: "20px",
-                padding: "12px",
-                background: "#0d1117",
-                borderRadius: "6px",
-                border: "1px solid #4f8cff"
-              }}>
-                <h5 style={{ color: "#4f8cff", marginBottom: "8px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
-                  <FaShoppingCart style={{ color: "#4f8cff" }} /> Extra selezionati
-                </h5>
-                
-                {washServices.length > 0 && (
-                  <div style={{ marginBottom: "8px" }}>
-                    <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
-                      <FaSoap style={{ color: "#4f8cff" }} /> Servizi lavaggio:
-                    </div>
-                    {washServices.map((ws, idx) => {
-                      const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
-                      return (
-                        <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px", paddingLeft: "8px" }}>
-                          <span>{service?.serviceName || "Servizio"}</span>
-                          <span style={{ color: "#4f8cff" }}>+€{service?.price.toFixed(2)}</span>
-                        </div>
-                      );
-                    })}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginTop: "4px", borderTop: "1px solid #333", paddingTop: "4px" }}>
-                      <span style={{ fontWeight: "bold" }}>Totale lavaggi:</span>
-                      <span style={{ color: "#4f8cff", fontWeight: "bold" }}>€{washTotal.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
-                
-                {selectedConvention && (
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", paddingTop: washServices.length > 0 ? "8px" : "0", borderTop: washServices.length > 0 ? "1px solid #333" : "none" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                      <FaFileContract style={{ color: "#4f8cff" }} /> {selectedConvention.name}
-                    </span>
-                    <span style={{ color: "#10b981" }}>
-                      {selectedConvention.discount_type === 'percentage' && `-${selectedConvention.discount_value}%`}
-                      {selectedConvention.discount_type === 'fixed' && `-€${selectedConvention.discount_value}`}
-                      {selectedConvention.discount_type === 'free_minutes' && `-${selectedConvention.discount_value}min`}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+{(washServices.length > 0 || selectedConvention) && (
+  <div style={{
+    marginTop: "20px",
+    padding: "12px",
+    background: "#1e293b",  // 🔥 CAMBIATO: sfondo più chiaro
+    borderRadius: "6px",
+    border: "1px solid #4f8cff"
+  }}>
+    <h5 style={{ color: "#4f8cff", marginBottom: "8px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+      <FaShoppingCart style={{ color: "#4f8cff" }} /> Extra selezionati
+    </h5>
+    
+    {washServices.length > 0 && (
+      <div style={{ marginBottom: "8px" }}>
+        <div style={{ fontSize: "11px", color: "#cbd5e1", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+          <FaSoap style={{ color: "#4f8cff" }} /> Servizi lavaggio:
+        </div>
+        {washServices.map((ws, idx) => {
+          const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
+          return (
+            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px", paddingLeft: "8px" }}>
+              <span style={{ color: "#f1f5f9" }}>{service?.serviceName || "Servizio"}</span>  {/* 🔥 TESTO BIANCO */}
+              <span style={{ color: "#4f8cff" }}>+€{service?.price.toFixed(2)}</span>
+            </div>
+          );
+        })}
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginTop: "4px", borderTop: "1px solid #475569", paddingTop: "4px" }}>
+          <span style={{ fontWeight: "bold", color: "#f1f5f9" }}>Totale lavaggi:</span>
+          <span style={{ color: "#4f8cff", fontWeight: "bold" }}>€{washTotal.toFixed(2)}</span>
+        </div>
+      </div>
+    )}
+    
+    {selectedConvention && (
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        fontSize: "11px", 
+        paddingTop: washServices.length > 0 ? "8px" : "0", 
+        borderTop: washServices.length > 0 ? "1px solid #475569" : "none" 
+      }}>
+        <span style={{ display: "flex", alignItems: "center", gap: "4px", color: "#f1f5f9" }}>
+          <FaFileContract style={{ color: "#4f8cff" }} /> {selectedConvention.name}
+        </span>
+        <span style={{ color: "#10b981" }}>
+          {selectedConvention.discount_type === 'percentage' && `-${selectedConvention.discount_value}%`}
+          {selectedConvention.discount_type === 'fixed' && `-€${selectedConvention.discount_value}`}
+          {selectedConvention.discount_type === 'free_minutes' && `-${selectedConvention.discount_value}min`}
+        </span>
+      </div>
+    )}
+  </div>
+)}
           </section>
 
           {/* Colonna destra - Azioni */}
