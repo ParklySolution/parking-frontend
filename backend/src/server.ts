@@ -9,6 +9,7 @@ dotenv.config();
 import superadminRoutes from "./routes/superadmin.routes.js";
 import tenantRoutes from "./routes/tenant.routes.js";
 import authRoutes from "./routes/auth.routes.js"; // 🔥 NUOVA ROUTE PER AUTH
+import vehicleRoutes from "./routes/vehicle.routes";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +34,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/superadmin", superadminRoutes);
 app.use("/api/tenant", tenantRoutes);
 app.use("/api/auth", authRoutes); // 🔥 NUOVA ROUTE PER AUTH (forgot/reset password)
+app.use("/api/vehicles", vehicleRoutes);
 
 // 404 handler
 app.use((_req, res) => {
