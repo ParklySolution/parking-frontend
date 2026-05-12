@@ -54,7 +54,8 @@ import {
   FaPalette,
   FaChevronDown,
   FaParking,
-  FaGift
+  FaGift,
+  FaReceipt
 } from "react-icons/fa";
 
 // ⭐ Colori disponibili per il selettore
@@ -145,6 +146,9 @@ export default function Ingresso() {
 
   // 🕒 CLOCK - FISSO AL MOMENTO DEL CARICAMENTO
   const [entryTime] = useState(() => nowLabel());
+
+  // 🔄 STATO PER CREAZIONE SESSIONE
+  const [isCreating, setIsCreating] = useState(false);
 
   /* ===============================
      RECUPERA TENANT ID
@@ -465,6 +469,119 @@ export default function Ingresso() {
     }
   }
 
+  /* =========================================
+     🔥 NUOVA FUNZIONE: PREPARA CONTO
+     ========================================= */
+  const handlePrepareBill = async () => {
+    console.log("🧾 PREPARA CONTO - Creazione sessione per pagamento immediato");
+    
+    // Verifica che i campi obbligatori siano compilati
+    if (!plateUpper || plateUpper.length < 5) {
+      alert("Per favore, inserisci una targa valida");
+      return;
+    }
+    
+    if (!selectedModel && !vehicleProfile) {
+      alert("Per favore, seleziona un modello");
+      return;
+    }
+    
+    const categoryId = vehicleProfile?.category?.id ?? selectedModel?.category_id;
+    if (!categoryId) {
+      alert("Categoria veicolo non valida");
+      return;
+    }
+    
+    setIsCreating(true);
+    
+    try {
+      const brandName = vehicleProfile?.brand?.name ?? selectedModel?.brand_name ?? "";
+      const modelName = vehicleProfile?.model?.name ?? selectedModel?.model_name ?? "";
+      const categoryName = vehicleProfile?.category?.name ?? selectedModel?.category_name ?? "";
+      const color = selectedColor?.name ?? vehicleProfile?.color?.name ?? null;
+      const vehicleProfileId = vehicleProfile?.id ?? null;
+      
+      // Determina se ci sono lavaggi
+      const hasWashServices = washServices.length > 0;
+      
+      let result;
+      
+      if (hasWashServices) {
+        // Crea sessione con lavaggi
+        result = await createParkingSessionWithWash({
+          tenantId,
+          categoryId,
+          customerId: lookup.status === "found" ? lookup.customer.id : null,
+          subscriptionId: lookup.subscription?.id ?? null,
+          conventionId: selectedConventionId,
+          washServices: washServices,
+          plate: plateUpper,
+          brandName,
+          modelName,
+          categoryName,
+          color,
+          vehicleProfileId,
+          calculatedAmount: combinedTotal,
+          notes: notes || undefined,
+        });
+      } else {
+        // Crea sessione senza lavaggi
+        result = await createParkingSessionEntry({
+          tenantId,
+          categoryId,
+          plate: plateUpper,
+          brandName,
+          modelName,
+          categoryName,
+          color,
+          customerId: lookup.status === "found" ? lookup.customer.id : null,
+          subscriptionId: lookup.subscription?.id ?? null,
+          conventionId: selectedConventionId,
+          priceListId: null,
+          vehicleProfileId,
+          washServices: [],
+          calculatedAmount: tariff || 0,
+          notes: notes || null
+        });
+        
+        // Crea snapshot del veicolo
+        if (result.success && result.session) {
+          await createParkingSessionVehicleSnapshot({
+            parkingSessionId: result.session.id,
+            plate: plateUpper,
+            brandName,
+            modelName,
+            categoryName,
+            tariff: tariff || 0,
+            color,
+            vehicleProfileId,
+          });
+        }
+      }
+      
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      
+      console.log("✅ Sessione creata, apro exit per pagamento:", result.session);
+      
+      // Naviga alla pagina di exit con l'ID della sessione
+      navigate("/exit", { 
+        state: { 
+          sessionId: result.session.id,
+          ticketNumber: result.session.ticket_number,
+          fromIngress: true 
+        } 
+      });
+      
+    } catch (error) {
+      console.error("❌ Errore prepare bill:", error);
+      alert("Errore durante la preparazione del conto: " + (error as Error).message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const handlePrintParkingTicket = async () => {
     const categoryId = vehicleProfile?.category?.id ?? selectedModel?.category_id;
     
@@ -659,21 +776,21 @@ export default function Ingresso() {
       });
 
       const result = await createParkingSessionWithWash({
-  tenantId,
-  categoryId,
-  customerId: lookup.status === "found" ? lookup.customer.id : null,
-  subscriptionId: lookup.subscription?.id ?? null,
-  conventionId: selectedConventionId,
-  washServices: washServices,
-  plate: plateUpper,
-  brandName,
-  modelName,
-  categoryName,
-  color,
-  vehicleProfileId,
-  calculatedAmount: combinedTotal,
-  notes: notes || undefined,
-});
+        tenantId,
+        categoryId,
+        customerId: lookup.status === "found" ? lookup.customer.id : null,
+        subscriptionId: lookup.subscription?.id ?? null,
+        conventionId: selectedConventionId,
+        washServices: washServices,
+        plate: plateUpper,
+        brandName,
+        modelName,
+        categoryName,
+        color,
+        vehicleProfileId,
+        calculatedAmount: combinedTotal,
+        notes: notes || undefined,
+      });
 
       // 🔍 LOG 3: Verifica risultato
       console.log("✅ Risultato createParkingSessionWithWash:", result);
@@ -849,26 +966,26 @@ export default function Ingresso() {
   };
 
   const resetForm = () => {
-  // Resetta gli state
-  setPlate("");
-  setModelInput("");
-  setSelectedModel(null);
-  setVehicleProfile(null);
-  setSelectedColor(null);
-  setWashServices([]);
-  setSelectedConventionId(null);
-  setSelectedConvention(null);
-  setLookup({ status: "idle" });
-  setCreatedTicket(null);
-  setShowToast(false);
-  setShowModelSuggestions(false);
-  setNotes("");
-  
-  // Aspetta che il toast venga mostrato prima di reindirizzare
-  setTimeout(() => {
-    navigate("/dashboard");
-  }, 1500);
-};
+    // Resetta gli state
+    setPlate("");
+    setModelInput("");
+    setSelectedModel(null);
+    setVehicleProfile(null);
+    setSelectedColor(null);
+    setWashServices([]);
+    setSelectedConventionId(null);
+    setSelectedConvention(null);
+    setLookup({ status: "idle" });
+    setCreatedTicket(null);
+    setShowToast(false);
+    setShowModelSuggestions(false);
+    setNotes("");
+    
+    // Aspetta che il toast venga mostrato prima di reindirizzare
+    setTimeout(() => {
+      navigate("/dashboard");
+    }, 1500);
+  };
 
   /* ===============================
      RENDER CONDIZIONALE
@@ -1078,82 +1195,101 @@ export default function Ingresso() {
               />
             </div>
 
-            {/* Selettore colore */}
+            {/* Selettore colore con anteprima visiva */}
             <div style={{ marginBottom: "15px", position: "relative" }}>
               <label style={{ color: "#9ca3af", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px", marginBottom: "5px" }}>
                 <FaPalette size={12} style={{ color: "#4f8cff" }} /> Colore
               </label>
-              <div style={{ position: "relative" }}>
-                <div
-                  onClick={() => setShowColorPicker(!showColorPicker)}
-                  style={{
-                    background: "#2d2d3a",
-                    border: "1px solid #333",
-                    borderRadius: "6px",
-                    padding: "10px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    cursor: "pointer"
-                  }}
-                >
-                  {selectedColor ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <div style={{
-                        width: "20px",
-                        height: "20px",
-                        backgroundColor: selectedColor.code,
-                        borderRadius: "4px",
-                        border: "1px solid #666"
-                      }} />
-                      <span style={{ color: "#fff" }}>{selectedColor.name}</span>
-                    </div>
-                  ) : (
-                    <span style={{ color: "#9ca3af" }}>Seleziona colore</span>
-                  )}
-                  <FaChevronDown style={{ color: "#9ca3af" }} />
-                </div>
-
-                {showColorPicker && (
-                  <div style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    right: 0,
-                    background: "#2d2d3a",
-                    border: "1px solid #4f8cff",
-                    borderRadius: "6px",
-                    marginTop: "5px",
-                    padding: "10px",
-                    zIndex: 1000,
-                    display: "grid",
-                    gridTemplateColumns: "repeat(4, 1fr)",
-                    gap: "8px",
-                    maxHeight: "200px",
-                    overflowY: "auto"
-                  }}>
-                    {AVAILABLE_COLORS.map((color) => (
-                      <div
-                        key={color.code}
-                        onClick={() => {
-                          setSelectedColor(color);
-                          setShowColorPicker(false);
-                        }}
-                        style={{
-                          width: "30px",
-                          height: "30px",
-                          backgroundColor: color.code,
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <div style={{ flex: 1, position: "relative" }}>
+                  <div
+                    onClick={() => setShowColorPicker(!showColorPicker)}
+                    style={{
+                      background: "#2d2d3a",
+                      border: "1px solid #333",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {selectedColor ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <div style={{
+                          width: "20px",
+                          height: "20px",
+                          backgroundColor: selectedColor.code,
                           borderRadius: "4px",
-                          border: selectedColor?.code === color.code ? "2px solid #4f8cff" : "1px solid #666",
-                          cursor: "pointer",
-                          transition: "transform 0.2s"
-                        }}
-                        title={color.name}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.1)"}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
-                      />
-                    ))}
+                          border: "1px solid #666"
+                        }} />
+                        <span style={{ color: "#fff" }}>{selectedColor.name}</span>
+                      </div>
+                    ) : (
+                      <span style={{ color: "#9ca3af" }}>Seleziona colore</span>
+                    )}
+                    <FaChevronDown style={{ color: "#9ca3af" }} />
                   </div>
+
+                  {showColorPicker && (
+                    <div style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      background: "#2d2d3a",
+                      border: "1px solid #4f8cff",
+                      borderRadius: "6px",
+                      marginTop: "5px",
+                      padding: "10px",
+                      zIndex: 1000,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(4, 1fr)",
+                      gap: "8px",
+                      maxHeight: "200px",
+                      overflowY: "auto"
+                    }}>
+                      {AVAILABLE_COLORS.map((color) => (
+                        <div
+                          key={color.code}
+                          onClick={() => {
+                            setSelectedColor(color);
+                            setShowColorPicker(false);
+                          }}
+                          style={{
+                            width: "30px",
+                            height: "30px",
+                            backgroundColor: color.code,
+                            borderRadius: "4px",
+                            border: selectedColor?.code === color.code ? "2px solid #4f8cff" : "1px solid #666",
+                            cursor: "pointer",
+                            transition: "transform 0.2s"
+                          }}
+                          title={color.name}
+                          onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.1)"}
+                          onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* 🔥 ANTEPRIMA COLORE SELEZIONATO */}
+                {selectedColor && (
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "8px",
+                      backgroundColor: selectedColor.code,
+                      border: "2px solid #fff",
+                      boxShadow: "0 0 5px rgba(0,0,0,0.3)",
+                      cursor: "pointer"
+                    }}
+                    title={selectedColor.name}
+                    onClick={() => setShowColorPicker(!showColorPicker)}
+                  />
                 )}
               </div>
             </div>
@@ -1346,59 +1482,59 @@ export default function Ingresso() {
             </div>
 
             {/* Riepilogo extra */}
-{(washServices.length > 0 || selectedConvention) && (
-  <div style={{
-    marginTop: "20px",
-    padding: "12px",
-    background: "#1e293b",  // 🔥 CAMBIATO: sfondo più chiaro
-    borderRadius: "6px",
-    border: "1px solid #4f8cff"
-  }}>
-    <h5 style={{ color: "#4f8cff", marginBottom: "8px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
-      <FaShoppingCart style={{ color: "#4f8cff" }} /> Extra selezionati
-    </h5>
-    
-    {washServices.length > 0 && (
-      <div style={{ marginBottom: "8px" }}>
-        <div style={{ fontSize: "11px", color: "#cbd5e1", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
-          <FaSoap style={{ color: "#4f8cff" }} /> Servizi lavaggio:
-        </div>
-        {washServices.map((ws, idx) => {
-          const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
-          return (
-            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px", paddingLeft: "8px" }}>
-              <span style={{ color: "#f1f5f9" }}>{service?.serviceName || "Servizio"}</span>  {/* 🔥 TESTO BIANCO */}
-              <span style={{ color: "#4f8cff" }}>+€{service?.price.toFixed(2)}</span>
-            </div>
-          );
-        })}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginTop: "4px", borderTop: "1px solid #475569", paddingTop: "4px" }}>
-          <span style={{ fontWeight: "bold", color: "#f1f5f9" }}>Totale lavaggi:</span>
-          <span style={{ color: "#4f8cff", fontWeight: "bold" }}>€{washTotal.toFixed(2)}</span>
-        </div>
-      </div>
-    )}
-    
-    {selectedConvention && (
-      <div style={{ 
-        display: "flex", 
-        justifyContent: "space-between", 
-        fontSize: "11px", 
-        paddingTop: washServices.length > 0 ? "8px" : "0", 
-        borderTop: washServices.length > 0 ? "1px solid #475569" : "none" 
-      }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "4px", color: "#f1f5f9" }}>
-          <FaFileContract style={{ color: "#4f8cff" }} /> {selectedConvention.name}
-        </span>
-        <span style={{ color: "#10b981" }}>
-          {selectedConvention.discount_type === 'percentage' && `-${selectedConvention.discount_value}%`}
-          {selectedConvention.discount_type === 'fixed' && `-€${selectedConvention.discount_value}`}
-          {selectedConvention.discount_type === 'free_minutes' && `-${selectedConvention.discount_value}min`}
-        </span>
-      </div>
-    )}
-  </div>
-)}
+            {(washServices.length > 0 || selectedConvention) && (
+              <div style={{
+                marginTop: "20px",
+                padding: "12px",
+                background: "#1e293b",
+                borderRadius: "6px",
+                border: "1px solid #4f8cff"
+              }}>
+                <h5 style={{ color: "#4f8cff", marginBottom: "8px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <FaShoppingCart style={{ color: "#4f8cff" }} /> Extra selezionati
+                </h5>
+                
+                {washServices.length > 0 && (
+                  <div style={{ marginBottom: "8px" }}>
+                    <div style={{ fontSize: "11px", color: "#cbd5e1", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <FaSoap style={{ color: "#4f8cff" }} /> Servizi lavaggio:
+                    </div>
+                    {washServices.map((ws, idx) => {
+                      const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
+                      return (
+                        <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px", paddingLeft: "8px" }}>
+                          <span style={{ color: "#f1f5f9" }}>{service?.serviceName || "Servizio"}</span>
+                          <span style={{ color: "#4f8cff" }}>+€{service?.price.toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginTop: "4px", borderTop: "1px solid #475569", paddingTop: "4px" }}>
+                      <span style={{ fontWeight: "bold", color: "#f1f5f9" }}>Totale lavaggi:</span>
+                      <span style={{ color: "#4f8cff", fontWeight: "bold" }}>€{washTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+                
+                {selectedConvention && (
+                  <div style={{ 
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    fontSize: "11px", 
+                    paddingTop: washServices.length > 0 ? "8px" : "0", 
+                    borderTop: washServices.length > 0 ? "1px solid #475569" : "none" 
+                  }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "4px", color: "#f1f5f9" }}>
+                      <FaFileContract style={{ color: "#4f8cff" }} /> {selectedConvention.name}
+                    </span>
+                    <span style={{ color: "#10b981" }}>
+                      {selectedConvention.discount_type === 'percentage' && `-${selectedConvention.discount_value}%`}
+                      {selectedConvention.discount_type === 'fixed' && `-€${selectedConvention.discount_value}`}
+                      {selectedConvention.discount_type === 'free_minutes' && `-${selectedConvention.discount_value}min`}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Colonna destra - Azioni */}
@@ -1449,7 +1585,41 @@ export default function Ingresso() {
               />
             </div>
 
-            {/* PULSANTI AZIONE */}
+            {/* 🔥 PULSANTE PREPARA CONTO - NUOVO */}
+            <button 
+              onClick={handlePrepareBill}
+              disabled={isCreating || !plateUpper || plateUpper.length < 5 || (!vehicleProfile && !selectedModel)}
+              style={{
+                width: "100%",
+                padding: "12px",
+                marginBottom: "10px",
+                background: "#f59e0b",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: (!plateUpper || plateUpper.length < 5 || (!vehicleProfile && !selectedModel)) ? "not-allowed" : "pointer",
+                fontWeight: "bold",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                transition: "background 0.2s",
+                opacity: (!plateUpper || plateUpper.length < 5 || (!vehicleProfile && !selectedModel)) ? 0.5 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (!isCreating && plateUpper.length >= 5 && (vehicleProfile || selectedModel)) {
+                  e.currentTarget.style.background = "#d97706";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isCreating && plateUpper.length >= 5 && (vehicleProfile || selectedModel)) {
+                  e.currentTarget.style.background = "#f59e0b";
+                }
+              }}
+            >
+              <FaReceipt /> {isCreating ? "CREAZIONE SESSIONE..." : "PREPARA CONTO"}
+            </button>
+
             <button 
               onClick={handlePrintParkingTicket}
               disabled={!plateUpper || plateUpper.length < 5 || (!vehicleProfile && !selectedModel)}

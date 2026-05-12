@@ -149,9 +149,12 @@ export default function Exit() {
   const [exitTime] = useState(() => nowLabel());
 
   /* =========================================
-     TICKET
+     TICKET - Gestione arrivo da Ingresso
      ========================================= */
   const initialTicket = typeof location.state?.ticket === "number" ? String(location.state.ticket) : "";
+  const initialSessionId = location.state?.sessionId;
+  const fromIngress = location.state?.fromIngress;
+  
   const [ticket, setTicket] = useState(initialTicket);
   const ticketNumber = useMemo(() => Number(ticket), [ticket]);
 
@@ -181,9 +184,9 @@ export default function Exit() {
      SERVIZI LAVAGGIO
      ========================================= */
   const [washServices, setWashServices] = useState<WashServiceSelection[]>([]);
-    const [availableWashServices, setAvailableWashServices] = useState<WashServicePriceUI[]>([]);
+  const [availableWashServices, setAvailableWashServices] = useState<WashServicePriceUI[]>([]);
   const [washTotal, setWashTotal] = useState<number>(0);
-  const [washServicesLoaded, setWashServicesLoaded] = useState(false); // 🔥 NUOVO FLAG
+  const [washServicesLoaded, setWashServicesLoaded] = useState(false);
 
   /* =========================================
      CONVENZIONI
@@ -352,6 +355,115 @@ export default function Exit() {
     }
   };
 
+  /* =========================================
+     FUNZIONE PER CARICARE SESSIONE PER ID (DA INGRESSO)
+     ========================================= */
+  const loadSessionById = async (sessionId: string) => {
+    console.log("🚗 Caricamento sessione per ID:", sessionId);
+    setStatus("loading");
+    setWashServicesLoaded(false);
+    
+    try {
+      const { data: sessionData, error } = await supabase
+        .from('parking_sessions')
+        .select(`
+          *,
+          parking_session_vehicles (*),
+          parking_session_wash_services (*)
+        `)
+        .eq('id', sessionId)
+        .single();
+      
+      if (error) throw error;
+      
+      console.log("📦 Sessione caricata per ID:", sessionData);
+      setSession(sessionData);
+      
+      // Popola i dati del veicolo
+      const vehicle = sessionData.parking_session_vehicles?.[0];
+      let finalCategoryId = null;
+      let loadedServices: WashServicePriceUI[] = [];
+      
+      if (vehicle) {
+        setVehicleData({
+          plate: vehicle.plate,
+          brand: { name: vehicle.brand_name },
+          model: { name: vehicle.model_name },
+          category: { name: vehicle.category_name },
+          color: vehicle.color ? { name: vehicle.color } : null
+        });
+        
+        setCategoriaNome(vehicle.category_name);
+        
+        // Carica categoria e servizi
+        if (vehicle.category_name) {
+          const { data: catData } = await supabase
+            .from('vehicle_categories')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('name', vehicle.category_name)
+            .maybeSingle();
+          
+          if (catData?.id) {
+            finalCategoryId = catData.id;
+            setCategoryId(finalCategoryId);
+            await loadPriceRules(finalCategoryId);
+            // Carica servizi disponibili
+            loadedServices = await getAvailableWashServices(tenantId, finalCategoryId);
+            setAvailableWashServices(loadedServices);
+            setWashServicesLoaded(true);
+            console.log("✅ Servizi lavaggio caricati:", loadedServices.length);
+          }
+        }
+      }
+      
+      // Carica wash services della sessione
+      let sessionWashServices = [];
+      let sessionWashTotal = 0;
+      
+      if (sessionData.parking_session_wash_services?.length > 0) {
+        sessionWashServices = sessionData.parking_session_wash_services.map((ws: any) => ({
+          washServiceId: ws.wash_service_id,
+          quantity: ws.quantity || 1,
+          _price: ws.wash_service_price || 0,
+          _name: ws.wash_service_name
+        }));
+        
+        // Calcola totale usando loadedServices
+        for (const ws of sessionWashServices) {
+          const service = loadedServices.find(s => s.washServiceId === ws.washServiceId);
+          if (service) {
+            sessionWashTotal += service.price;
+          } else if (ws._price) {
+            sessionWashTotal += ws._price;
+          }
+        }
+      }
+      
+      console.log("🧼 sessionWashServices:", sessionWashServices);
+      console.log("💰 sessionWashTotal calcolato:", sessionWashTotal);
+      
+      setWashServices(sessionWashServices);
+      setWashTotal(sessionWashTotal);
+      setOreSosta(calculateOreSosta(sessionData.entry_time));
+      setStatus("ready");
+      
+      // Cerca cliente dalla targa per insoluti
+      if (vehicle?.plate) {
+        const lookup = await lookupCustomerByPlate(vehicle.plate);
+        setLookupResult(lookup);
+        if (lookup.customer?.id) {
+          await loadOutstandingDebts(lookup.customer.id);
+        }
+      }
+      
+    } catch (err) {
+      console.error("❌ Errore caricamento sessione:", err);
+      setStatus("error");
+      setWashServicesLoaded(true);
+    }
+  };
+
   /* ===============================
       RECUPERA TENANT ID
       =============================== */
@@ -392,6 +504,20 @@ export default function Exit() {
   }, []);
 
   /* =========================================
+      EFFECT PER CARICARE SESSIONE DA INGRESSO O TICKET
+      ========================================= */
+  useEffect(() => {
+    if (tenantId) {
+      if (initialSessionId) {
+        console.log("🚗 Arrivato da Ingresso con sessione:", initialSessionId);
+        loadSessionById(initialSessionId);
+      } else if (initialTicket) {
+        handleLookup(Number(initialTicket));
+      }
+    }
+  }, [tenantId, initialSessionId, initialTicket]);
+
+  /* =========================================
       CARICA METODI PAGAMENTO
       ========================================= */
   useEffect(() => {
@@ -425,7 +551,7 @@ export default function Exit() {
       const services = await getAvailableWashServices(tenantId, categoryId);
       console.log("✅ Servizi trovati:", services);
       setAvailableWashServices(services);
-      setWashServicesLoaded(true); // 🔥 IMPOSTA FLAG
+      setWashServicesLoaded(true);
       return services;
     } catch (error) {
       console.error("Errore caricamento servizi lavaggio:", error);
@@ -516,7 +642,6 @@ export default function Exit() {
 
   // 🔥 useEffect per sincronizzare washTotal quando availableWashServices viene caricato
   useEffect(() => {
-    // Se abbiamo washServices ma washTotal è 0 e availableWashServices è stato caricato
     if (washServices.length > 0 && washTotal === 0 && availableWashServices.length > 0) {
       console.log("🔄 Ricalcolo washTotal dopo caricamento availableWashServices");
       let total = 0;
@@ -808,7 +933,7 @@ export default function Exit() {
     setWashTotal(total);
   };
 
-  /* =========================================
+    /* =========================================
       CALCOLO PREZZO CON ENGINE
    ========================================= */
   const calculateFinalTotal = useCallback(async () => {
@@ -981,7 +1106,7 @@ export default function Exit() {
 
     setStatus("loading");
     setIsExiting(true);
-    setWashServicesLoaded(false); // 🔥 RESET FLAG
+    setWashServicesLoaded(false);
 
     try {
       const openSession = await fetchOpenSessionByTicket(tenantId, Number(numToUse));
@@ -1093,15 +1218,6 @@ export default function Exit() {
       setIsExiting(false);
     }
   };
-
-  /* =========================================
-      EFFECT PER INITIAL TICKET
-      ========================================= */
-  useEffect(() => {
-    if (initialTicket && tenantId) {
-      handleLookup(Number(initialTicket));
-    }
-  }, [initialTicket, tenantId]);
 
   /* =========================================
       PAGAMENTO + CHIUSURA SESSIONE (CON STAMPA)
@@ -1461,7 +1577,7 @@ export default function Exit() {
               />
             </div>
 
-            {/* DETTAGLIO PERNOTTAMENTI - NUOVO */}
+            {/* DETTAGLIO PERNOTTAMENTI */}
             {priceBreakdown && priceBreakdown.giorniInteri > 0 && (
               <div style={{ 
                 marginTop: "15px",
