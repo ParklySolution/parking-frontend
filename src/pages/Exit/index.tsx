@@ -1,4 +1,4 @@
-// src/pages/exit/index.tsx - VERSIONE COMPLETA CON STAMPA INTEGRATA
+// src/pages/exit/index.tsx - VERSIONE COMPLETA CON TUTTE LE FUNZIONALITÀ
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -53,7 +53,8 @@ import {
   FaPlus,
   FaMinus,
   FaArrowLeft,
-  FaEdit
+  FaEdit,
+  FaBed
 } from "react-icons/fa";
 
 // Colori
@@ -180,8 +181,9 @@ export default function Exit() {
      SERVIZI LAVAGGIO
      ========================================= */
   const [washServices, setWashServices] = useState<WashServiceSelection[]>([]);
-  const [availableWashServices, setAvailableWashServices] = useState<WashServicePriceUI[]>([]);
+    const [availableWashServices, setAvailableWashServices] = useState<WashServicePriceUI[]>([]);
   const [washTotal, setWashTotal] = useState<number>(0);
+  const [washServicesLoaded, setWashServicesLoaded] = useState(false); // 🔥 NUOVO FLAG
 
   /* =========================================
      CONVENZIONI
@@ -215,6 +217,9 @@ export default function Exit() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [stampaAbilitata, setStampaAbilitata] = useState(false);
   const [modalitaNotte, setModalitaNotte] = useState(false);
+  
+  // 🔥 FLAG PER EVITARE RACE CONDITION
+  const [isExiting, setIsExiting] = useState(false);
 
   /* =========================================
      PULSANTI EXTRA
@@ -224,6 +229,9 @@ export default function Exit() {
   const [overrideButton, setOverrideButton] = useState<{ id: string; label: string; amount: number } | null>(null);
   const [calculatedPrice, setCalculatedPrice] = useState<number>(0);
   const [priceRules, setPriceRules] = useState<any>(null);
+  
+  // 🔥 DETTAGLIO PERNOTTAMENTI PER UI
+  const [priceBreakdown, setPriceBreakdown] = useState<{ giorniInteri: number; costoNotti: number; costoOre: number } | null>(null);
 
   /* =========================================
      FUNZIONE PER RECUPERARE SHIFT ATTIVO
@@ -261,91 +269,88 @@ export default function Exit() {
   };
 
   /* =========================================
-     FUNZIONE STAMPA TICKET (IMPLEMENTATA)
+     FUNZIONE STAMPA TICKET (CORRETTA CON IMPORTO)
      ========================================= */
-  /* =========================================
-   FUNZIONE STAMPA TICKET (CORRETTA CON IMPORTO)
-   ========================================= */
-const handlePrintTicket = async (tipo: string) => {
-  if (!session || !tenantId) {
-    alert("Dati sessione mancanti");
-    return;
-  }
+  const handlePrintTicket = async (tipo: string) => {
+    if (!session || !tenantId) {
+      alert("Dati sessione mancanti");
+      return;
+    }
 
-  try {
-    // Recupera dati azienda
-    const { data: companyData } = await supabase
-      .from('tenant_company_info')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
+    try {
+      // Recupera dati azienda
+      const { data: companyData } = await supabase
+        .from('tenant_company_info')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
 
-    // Calcola ore di sosta effettive
-    const oreSostaCalc = oreSosta;
+      // Calcola ore di sosta effettive
+      const oreSostaCalc = oreSosta;
 
-    // Prepara i servizi lavaggio per la stampa
-    const washServicesList = washServices.map(ws => {
-      const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
-      return {
-        name: service?.serviceName || "Lavaggio",
-        price: service?.price || 0,
-        duration: service?.durationMinutes || 0
-      };
-    });
+      // Prepara i servizi lavaggio per la stampa
+      const washServicesList = washServices.map(ws => {
+        const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
+        return {
+          name: service?.serviceName || "Lavaggio",
+          price: service?.price || 0,
+          duration: service?.durationMinutes || 0
+        };
+      });
 
-    // Importo finale pagato (usa calculatedPrice che è il totale effettivo)
-    const finalTotal = calculatedPrice;
+      // Importo finale pagato (usa calculatedPrice che è il totale effettivo)
+      const finalTotal = calculatedPrice;
 
-    console.log("💰 STAMPA TICKET - Importo finale:", finalTotal);
-    console.log("💰 STAMPA TICKET - calculatedPrice:", calculatedPrice);
-    console.log("💰 STAMPA TICKET - tariffaOraria:", tariffaOraria);
+      console.log("💰 STAMPA TICKET - Importo finale:", finalTotal);
+      console.log("💰 STAMPA TICKET - calculatedPrice:", calculatedPrice);
+      console.log("💰 STAMPA TICKET - tariffaOraria:", tariffaOraria);
 
-    await printTicket({
-      ticketNumber: session.ticket_number,
-      plate: vehicleData?.plate || session?.parking_session_vehicles?.[0]?.plate || "",
-      entryTime: new Date(session.entry_time),
-      exitTime: new Date(),
-      brand: vehicleData?.brand?.name || session?.parking_session_vehicles?.[0]?.brand_name || "",
-      model: vehicleData?.model?.name || session?.parking_session_vehicles?.[0]?.model_name || "",
-      category: categoriaNome || session?.parking_session_vehicles?.[0]?.category_name || "",
-      company: {
-        company_name: companyData?.company_name,
-        legal_address: companyData?.legal_address,
-        phone: companyData?.phone,
-        email: companyData?.email,
-        website: companyData?.website,
-        vat_number: companyData?.vat_number
-      },
-      tariffInfo: priceRules ? {
-        firstHour: priceRules.first_hour,
-        hourly: priceRules.hourly,
-        nextHours: priceRules.next_hours,
-        maxDaily: priceRules.day_max,
-        nightTariff: priceRules.night_hourly,
-        overnightFixed: priceRules.overnight_24h
-      } : undefined,
-      qrData: JSON.stringify({
-        ticket: session.ticket_number,
-        plate: vehicleData?.plate,
-        sessionId: session.id,
-        type: 'exit'
-      }),
-      hasWashServices: washServices.length > 0,
-      washServices: washServicesList.map(s => `${s.name} (€${s.price.toFixed(2)})`),
-      washTotal: washTotal,
-      totalAmount: finalTotal,  // 🔥 IMPORTANTE: passa l'importo pagato
-      paymentMethod: paymentMethod === 'CASH' ? 'Contanti' : (paymentMethod === 'CARD' ? 'Carta' : 'Altro'),
-      hours: oreSostaCalc,
-      notes: notes ? [notes] : undefined
-    });
+      await printTicket({
+        ticketNumber: session.ticket_number,
+        plate: vehicleData?.plate || session?.parking_session_vehicles?.[0]?.plate || "",
+        entryTime: new Date(session.entry_time),
+        exitTime: new Date(),
+        brand: vehicleData?.brand?.name || session?.parking_session_vehicles?.[0]?.brand_name || "",
+        model: vehicleData?.model?.name || session?.parking_session_vehicles?.[0]?.model_name || "",
+        category: categoriaNome || session?.parking_session_vehicles?.[0]?.category_name || "",
+        company: {
+          company_name: companyData?.company_name,
+          legal_address: companyData?.legal_address,
+          phone: companyData?.phone,
+          email: companyData?.email,
+          website: companyData?.website,
+          vat_number: companyData?.vat_number
+        },
+        tariffInfo: priceRules ? {
+          firstHour: priceRules.first_hour,
+          hourly: priceRules.hourly,
+          nextHours: priceRules.next_hours,
+          maxDaily: priceRules.day_max,
+          nightTariff: priceRules.night_hourly,
+          overnightFixed: priceRules.overnight_24h
+        } : undefined,
+        qrData: JSON.stringify({
+          ticket: session.ticket_number,
+          plate: vehicleData?.plate,
+          sessionId: session.id,
+          type: 'exit'
+        }),
+        hasWashServices: washServices.length > 0,
+        washServices: washServicesList.map(s => `${s.name} (€${s.price.toFixed(2)})`),
+        washTotal: washTotal,
+        totalAmount: finalTotal,
+        paymentMethod: paymentMethod === 'CASH' ? 'Contanti' : (paymentMethod === 'CARD' ? 'Carta' : 'Altro'),
+        hours: oreSostaCalc,
+        notes: notes ? [notes] : undefined
+      });
 
-    console.log(`✅ Ticket ${tipo} stampato con successo - Importo: €${finalTotal}`);
+      console.log(`✅ Ticket ${tipo} stampato con successo - Importo: €${finalTotal}`);
 
-  } catch (err) {
-    console.error("❌ Errore stampa ticket:", err);
-    alert("Errore durante la stampa del ticket");
-  }
-};
+    } catch (err) {
+      console.error("❌ Errore stampa ticket:", err);
+      alert("Errore durante la stampa del ticket");
+    }
+  };
 
   /* ===============================
       RECUPERA TENANT ID
@@ -410,18 +415,22 @@ const handlePrintTicket = async (tipo: string) => {
   }, [tenantId]);
 
   /* =========================================
-      CARICA SERVIZI LAVAGGIO
+      CARICA SERVIZI LAVAGGIO (CON FLAG)
       ========================================= */
   const loadWashServices = async () => {
-    if (!categoryId || !tenantId) return;
+    if (!categoryId || !tenantId) return [];
 
     try {
       console.log("🔍 Caricamento lavaggi per categoria:", categoryId);
       const services = await getAvailableWashServices(tenantId, categoryId);
       console.log("✅ Servizi trovati:", services);
       setAvailableWashServices(services);
+      setWashServicesLoaded(true); // 🔥 IMPOSTA FLAG
+      return services;
     } catch (error) {
       console.error("Errore caricamento servizi lavaggio:", error);
+      setWashServicesLoaded(true);
+      return [];
     }
   };
 
@@ -485,6 +494,51 @@ const handlePrintTicket = async (tipo: string) => {
       loadConventions();
     }
   }, [tenantId]);
+
+  // 🔥 RICALCOLO WASH TOTAL QUANDO NECESSARIO
+  useEffect(() => {
+    if (washServices.length > 0 && washTotal === 0 && availableWashServices.length > 0) {
+      console.log("🔄 Ricalcolo washTotal perché è 0 ma ci sono washServices");
+      let total = 0;
+      for (const ws of washServices) {
+        const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
+        if (service) {
+          total += service.price;
+          console.log(`💰 Ricalcolo: ${service.serviceName} -> €${service.price}`);
+        }
+      }
+      if (total > 0) {
+        console.log("💰 washTotal ricalcolato:", total);
+        setWashTotal(total);
+      }
+    }
+  }, [washServices, availableWashServices, washTotal]);
+
+  // 🔥 useEffect per sincronizzare washTotal quando availableWashServices viene caricato
+  useEffect(() => {
+    // Se abbiamo washServices ma washTotal è 0 e availableWashServices è stato caricato
+    if (washServices.length > 0 && washTotal === 0 && availableWashServices.length > 0) {
+      console.log("🔄 Ricalcolo washTotal dopo caricamento availableWashServices");
+      let total = 0;
+      for (const ws of washServices) {
+        const service = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
+        if (service) {
+          total += service.price;
+          console.log(`💰 ${service.serviceName}: €${service.price}`);
+        }
+      }
+      if (total > 0) {
+        console.log("💰 washTotal ricalcolato:", total);
+        setWashTotal(total);
+      }
+    }
+  }, [availableWashServices, washServices, washTotal]);
+
+  useEffect(() => {
+    if (categoryId) {
+      loadPriceRules(categoryId);
+    }
+  }, [categoryId, tenantId]);
 
   /* =========================================
       CARICA DATI FEDELTÀ
@@ -596,17 +650,30 @@ const handlePrintTicket = async (tipo: string) => {
         setTariffaOraria(tariffaDaMostrare);
         console.log("💰 Tariffa oraria aggiornata:", tariffaDaMostrare);
       }
+      return rules;
     } catch (error) {
       console.error("❌ Errore caricamento regole prezzo:", error);
+      return null;
     }
   };
 
   /* =========================================
-      CALCOLA TOTALE LAVAGGI
+      CALCOLA TOTALE LAVAGGI (CON FLAG)
       ========================================= */
   const calculateWashTotal = () => {
-    if (!washServices.length || !availableWashServices.length) {
-      setWashTotal(0);
+    // 🔥 Se siamo in modalità Exit, NON ricalcolare
+    if (isExiting) {
+      console.log("🧼 Modalità Exit attiva, salto il calcolo washTotal");
+      return;
+    }
+    
+    // Se non ci sono wash services, esci
+    if (!washServices.length) {
+      return;
+    }
+    
+    if (!availableWashServices.length) {
+      console.log("🧼 availableWashServices non ancora caricati");
       return;
     }
 
@@ -626,12 +693,15 @@ const handlePrintTicket = async (tipo: string) => {
     });
 
     console.log("💰 Totale lavaggi finale:", total);
-    setWashTotal(total);
+    
+    if (total !== washTotal) {
+      setWashTotal(total);
+    }
   };
 
   useEffect(() => {
     calculateWashTotal();
-  }, [washServices, availableWashServices]);
+  }, [washServices, availableWashServices, isExiting]);
 
   /* =========================================
       CALCOLA SCONTO CONVENZIONE
@@ -667,6 +737,78 @@ const handlePrintTicket = async (tipo: string) => {
   }, [categoryId, tenantId]);
 
   /* =========================================
+      GESTIONE LAVAGGI IN USCITA (CON DB)
+      ========================================= */
+  const handleWashToggle = async (service: WashServicePriceUI) => {
+    console.log("🖱️ Cliccato servizio in Exit:", service.serviceName);
+
+    const isSelected = washServices.some(s => s.washServiceId === service.washServiceId);
+    
+    if (!session?.id) {
+      console.error("❌ Sessione non disponibile");
+      return;
+    }
+
+    if (isSelected) {
+      // RIMUOVI il servizio dal DB
+      console.log("🗑️ Rimuovendo servizio:", service.serviceName);
+      
+      const { error } = await supabase
+        .from("parking_session_wash_services")
+        .delete()
+        .eq("parking_session_id", session.id)
+        .eq("wash_service_id", service.washServiceId);
+
+      if (error) {
+        console.error("❌ Errore rimozione lavaggio:", error);
+      } else {
+        console.log("✅ Servizio rimosso dal DB");
+      }
+      
+      setWashServices(prev => prev.filter(s => s.washServiceId !== service.washServiceId));
+      
+    } else {
+      // AGGIUNGI il servizio al DB
+      console.log("➕ Aggiungendo servizio:", service.serviceName);
+      
+      const { error } = await supabase
+        .from("parking_session_wash_services")
+        .insert({
+          parking_session_id: session.id,
+          wash_service_id: service.washServiceId,
+          wash_service_name: service.serviceName,
+          wash_service_price: service.price,
+          quantity: 1,
+          status: "pending",
+          tenant_id: tenantId
+        });
+
+      if (error) {
+        console.error("❌ Errore aggiunta lavaggio:", error);
+      } else {
+        console.log("✅ Servizio aggiunto al DB");
+      }
+      
+      setWashServices(prev => [...prev, { 
+        washServiceId: service.washServiceId, 
+        quantity: 1 
+      }]);
+    }
+    
+    // Ricalcola il totale
+    let total = 0;
+    for (const ws of washServices) {
+      if (ws.washServiceId === service.washServiceId && !isSelected) {
+        total += service.price;
+      } else if (ws.washServiceId !== service.washServiceId) {
+        const existingService = availableWashServices.find(s => s.washServiceId === ws.washServiceId);
+        if (existingService) total += existingService.price;
+      }
+    }
+    setWashTotal(total);
+  };
+
+  /* =========================================
       CALCOLO PREZZO CON ENGINE
    ========================================= */
   const calculateFinalTotal = useCallback(async () => {
@@ -677,6 +819,9 @@ const handlePrintTicket = async (tipo: string) => {
     try {
       console.log("🔍 LOOKUP RESULT COMPLETO:", lookupResult);
       console.log("🔍 LOOKUP RESULT CONTRACTS DETTAGLIO:", JSON.stringify(lookupResult.contracts, null, 2));
+      console.log("🧼 WASH SERVICES in Exit:", washServices);
+      console.log("🧼 washTotal:", washTotal);
+      console.log("⏱️ oreSosta:", oreSosta);
 
       const result = await calculatePrice({
         tenantId,
@@ -694,13 +839,37 @@ const handlePrintTicket = async (tipo: string) => {
       const baseAmount = result.amount;
       const totaleLavaggi = useFreeWash ? 0 : washTotal;
       const totaleInsoluti = totalePendenti;
-      const totaleFinale = baseAmount + totaleLavaggi - totaleConvenzione + scontoManuale + totaleInsoluti;
+      
+      // Se ci sono lavaggi e nessuna sosta, paga solo i lavaggi
+      const hasWashOnly = washServices.length > 0 && oreSosta === 0;
+      
+      let totaleFinale;
+      if (hasWashOnly) {
+        totaleFinale = totaleLavaggi - totaleConvenzione + scontoManuale + totaleInsoluti;
+        console.log("🎯 SOLO LAVAGGIO - nessuna sosta - importo:", totaleLavaggi);
+      } else {
+        totaleFinale = baseAmount + totaleLavaggi - totaleConvenzione + scontoManuale + totaleInsoluti;
+      }
+
+      // Calcola breakdown per la UI dei pernottamenti
+      if (priceRules && oreSosta > 0 && !hasWashOnly && priceRules.overnight_24h && priceRules.overnight_24h > 0) {
+        const giorniInteri = Math.floor(oreSosta / 24);
+        const costoNotti = giorniInteri * priceRules.overnight_24h;
+        const oreResidue = oreSosta % 24;
+        const firstHour = priceRules.first_hour || 0;
+        const nextHours = priceRules.next_hours || 0;
+        const costoOre = firstHour + (Math.max(0, oreResidue - 1) * nextHours);
+        setPriceBreakdown({ giorniInteri, costoNotti, costoOre });
+      } else {
+        setPriceBreakdown(null);
+      }
 
       console.log("💰 CALCOLO PREZZO FINALE:", {
         engineType: result.type,
         abbonato: result.type === "subscription" ? "SÌ (Sosta gratuita)" : "NO",
         base_sosta: baseAmount,
         lavaggi: totaleLavaggi,
+        hasWashOnly: hasWashOnly,
         convenzione: totaleConvenzione,
         scontoManuale: scontoManuale,
         insoluti: totaleInsoluti,
@@ -718,22 +887,29 @@ const handlePrintTicket = async (tipo: string) => {
     tenantId,
     overrideButton,
     appliedButtons,
+    washServices,
     washTotal,
+    oreSosta,
     useFreeWash,
     totaleConvenzione,
     scontoManuale,
     totalePendenti,
-    lookupResult
+    lookupResult,
+    isExiting,
+    priceRules
   ]);
 
   useEffect(() => {
     const updatePrice = async () => {
       console.log("🔄 UpdatePrice triggerato");
+      console.log("📊 washServices attuali:", washServices);
+      console.log("📊 washTotal attuale:", washTotal);
+      console.log("📊 oreSosta attuale:", oreSosta);
       const price = await calculateFinalTotal();
       setCalculatedPrice(price);
     };
     updatePrice();
-  }, [calculateFinalTotal]);
+  }, [calculateFinalTotal, washServices, washTotal, oreSosta]);
 
   /* =========================================
       GESTIONE PULSANTI EXTRA
@@ -776,28 +952,12 @@ const handlePrintTicket = async (tipo: string) => {
   };
 
   /* =========================================
-      GESTIONE LAVAGGI
-      ========================================= */
-  const handleWashToggle = (service: WashServicePriceUI) => {
-    console.log("🖱️ Cliccato servizio:", service.serviceName, "ID:", service.washServiceId);
-
-    setWashServices(prev => {
-      const exists = prev.some(s => s.washServiceId === service.washServiceId);
-      if (exists) {
-        return prev.filter(s => s.washServiceId !== service.washServiceId);
-      } else {
-        return [...prev, { washServiceId: service.washServiceId, quantity: 1 }];
-      }
-    });
-  };
-
-  /* =========================================
       GESTIONE SCONTO MANUALE
       ========================================= */
   const handleScontoChange = (amount: number) => {
     setScontoManuale(prev => {
       const newValue = (prev || 0) + amount;
-      return Math.max(-100, newValue);
+      return Math.max(-100, Math.min(100, newValue));
     });
   };
 
@@ -806,7 +966,7 @@ const handlePrintTicket = async (tipo: string) => {
   };
 
   /* =========================================
-      LOOKUP SESSIONE PER TICKET
+      LOOKUP SESSIONE PER TICKET (CORRETTO - CARICA PRIMA I SERVIZI)
    ========================================= */
   const handleLookup = async (ticketNum?: number) => {
     const numToUse = ticketNum !== undefined ? ticketNum : ticketNumber;
@@ -820,6 +980,8 @@ const handlePrintTicket = async (tipo: string) => {
     }
 
     setStatus("loading");
+    setIsExiting(true);
+    setWashServicesLoaded(false); // 🔥 RESET FLAG
 
     try {
       const openSession = await fetchOpenSessionByTicket(tenantId, Number(numToUse));
@@ -827,13 +989,17 @@ const handlePrintTicket = async (tipo: string) => {
       if (!openSession) {
         console.warn("❌ Sessione non trovata");
         setStatus("error");
+        setIsExiting(false);
+        setWashServicesLoaded(true);
         return;
       }
 
+      console.log("📦 SESSIONE COMPLETA:", openSession);
       setSession(openSession);
 
       const vehicle = openSession.parking_session_vehicles?.[0];
       let finalCategoryId = null;
+      let loadedServices: WashServicePriceUI[] = [];
 
       if (vehicle && vehicle.plate) {
         setVehicleData({
@@ -852,7 +1018,11 @@ const handlePrintTicket = async (tipo: string) => {
           setCategoryId(finalCategoryId);
           setCategoriaNome(lookup.vehicle.category.name);
           await loadTariffaOraria(finalCategoryId);
-          await loadWashServices();
+          // 🔥 CARICA E SALVA IN VARIABILE LOCALE
+          loadedServices = await getAvailableWashServices(tenantId, finalCategoryId);
+          setAvailableWashServices(loadedServices);
+          setWashServicesLoaded(true);
+          console.log("✅ Servizi lavaggio caricati:", loadedServices.length);
         }
       }
 
@@ -869,19 +1039,44 @@ const handlePrintTicket = async (tipo: string) => {
           setCategoryId(finalCategoryId);
           setCategoriaNome(vehicle.category_name);
           await loadTariffaOraria(finalCategoryId);
-          await loadWashServices();
+          // 🔥 CARICA E SALVA IN VARIABILE LOCALE
+          loadedServices = await getAvailableWashServices(tenantId, finalCategoryId);
+          setAvailableWashServices(loadedServices);
+          setWashServicesLoaded(true);
+          console.log("✅ Servizi lavaggio caricati (fallback):", loadedServices.length);
         }
       }
 
+      // 🔥 ORA USA loadedServices (variabile locale) per calcolare sessionWashTotal
       let sessionWashServices = [];
-      if (openSession.parking_session_wash_services?.length > 0) {
+      let sessionWashTotal = 0;
+      
+      if (openSession.parking_session_wash_services && openSession.parking_session_wash_services.length > 0) {
         sessionWashServices = openSession.parking_session_wash_services.map((ws: any) => ({
           washServiceId: ws.wash_service_id,
-          quantity: ws.quantity || 1
+          quantity: ws.quantity || 1,
+          _price: ws.wash_service_price || 0,
+          _name: ws.wash_service_name
         }));
+        
+        // 🔥 USA loadedServices INVECE DI availableWashServices
+        for (const ws of sessionWashServices) {
+          const service = loadedServices.find(s => s.washServiceId === ws.washServiceId);
+          if (service) {
+            sessionWashTotal += service.price;
+            console.log(`💰 Trovato prezzo per ${service.serviceName}: €${service.price}`);
+          } else if (ws._price) {
+            sessionWashTotal += ws._price;
+            console.log(`💰 Usato prezzo dalla sessione: €${ws._price}`);
+          }
+        }
       }
+      
+      console.log("🧼 sessionWashServices:", sessionWashServices);
+      console.log("💰 sessionWashTotal calcolato:", sessionWashTotal);
+      
       setWashServices(sessionWashServices);
-
+      setWashTotal(sessionWashTotal);
       setOreSosta(calculateOreSosta(openSession.entry_time));
       setStatus("ready");
 
@@ -893,6 +1088,9 @@ const handlePrintTicket = async (tipo: string) => {
     } catch (err) {
       console.error("🔥 ERRORE handleLookup:", err);
       setStatus("error");
+      setWashServicesLoaded(true);
+    } finally {
+      setIsExiting(false);
     }
   };
 
@@ -974,9 +1172,16 @@ const handlePrintTicket = async (tipo: string) => {
   };
 
   /* =========================================
-      PAGAMENTO DIFFERITO (CON STAMPA)
+      PAGAMENTO DIFFERITO (CON STAMPA E LOG E GESTIONE CLIENTE NON IDENTIFICATO)
       ========================================= */
   const handlePagamentoDifferito = async () => {
+    console.log("💳💳💳 PAGAMENTO DIFFERITO CHIAMATO 💳💳💳");
+    console.log("Session ID:", session?.id);
+    console.log("Ticket:", session?.ticket_number);
+    console.log("Customer ID:", session?.customer_id);
+    console.log("Calculated Price:", calculatedPrice);
+    console.log("Wash Services:", washServices);
+    
     if (!session || !tenantId) return;
 
     setIsProcessing(true);
@@ -986,28 +1191,59 @@ const handlePrintTicket = async (tipo: string) => {
         sessionId: session.id,
         finalAmount: 0,
       });
+      
+      console.log("✅ Sessione chiusa con finalAmount=0");
 
-      if (session.customer_id && calculatedPrice > 0) {
+      // 🔥 Se non c'è customer_id, proviamo a recuperarlo dalla targa
+      let customerId = session.customer_id;
+      
+      if (!customerId && session.parking_session_vehicles?.[0]?.plate) {
+        console.log("🔍 Cliente non associato, cerco per targa:", session.parking_session_vehicles[0].plate);
+        const lookup = await lookupCustomerByPlate(session.parking_session_vehicles[0].plate);
+        if (lookup.customer?.id) {
+          customerId = lookup.customer.id;
+          console.log("✅ Cliente trovato per targa:", customerId);
+        }
+      }
+      
+      if (customerId && calculatedPrice > 0) {
         const insolutoData = {
           tenant_id: tenantId,
-          customer_id: session.customer_id,
+          customer_id: customerId,
           source_id: session.id,
           source_type: 'parking',
           amount: calculatedPrice,
-          description: `Sosta del ${new Date(session.entry_time).toLocaleDateString()} - Ticket #${session.ticket_number}`,
+          description: `Sosta del ${new Date(session.entry_time).toLocaleDateString()} - Ticket #${session.ticket_number}${washServices.length > 0 ? ` + ${washServices.length} lavaggio/i` : ''}`,
           status: 'open',
           created_at: new Date().toISOString()
         };
+        
+        console.log("📝 Creazione insoluto:", insolutoData);
 
-        await supabase.from('outstanding_payments').insert(insolutoData);
+        const { data, error } = await supabase
+          .from('outstanding_payments')
+          .insert(insolutoData)
+          .select();
+
+        if (error) {
+          console.error("❌ Errore inserimento insoluto:", error);
+          // Non throwiamo l'errore per permettere comunque l'uscita
+        } else {
+          console.log("✅ Insoluto creato:", data);
+        }
+      } else if (!customerId && calculatedPrice > 0) {
+        console.warn("⚠️ Impossibile creare insoluto: cliente non identificato. Importo €", calculatedPrice);
+        // Opzionale: mostra un alert all'operatore
+        alert(`Attenzione: Importo di €${calculatedPrice.toFixed(2)} non fatturato perché il cliente non è stato identificato.`);
       }
 
-      // 🔥 STAMPA IL TICKET DI USCITA (differita)
       if (stampaAbilitata) {
+        console.log("🖨️ Stampo ticket di uscita differita");
         await handlePrintTicket('uscita');
       }
 
       setStatus("paid");
+      console.log("🎉 Pagamento differito completato, reindirizzo al dashboard...");
       setTimeout(() => navigate("/dashboard"), 2000);
 
     } catch (err) {
@@ -1225,6 +1461,32 @@ const handlePrintTicket = async (tipo: string) => {
               />
             </div>
 
+            {/* DETTAGLIO PERNOTTAMENTI - NUOVO */}
+            {priceBreakdown && priceBreakdown.giorniInteri > 0 && (
+              <div style={{ 
+                marginTop: "15px",
+                padding: "10px",
+                background: "#2d4a8a30",
+                borderRadius: "6px",
+                border: "1px solid #4f8cff"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: BLUE, marginBottom: "8px" }}>
+                  <FaBed />
+                  <strong>Pernottamenti</strong>
+                </div>
+                <div style={{ fontSize: "12px", color: "#fff" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                    <span>Notti ({priceBreakdown.giorniInteri} × €{priceRules?.overnight_24h || 0}/notte):</span>
+                    <span style={{ color: BLUE }}>€{priceBreakdown.costoNotti}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Ore residue:</span>
+                    <span style={{ color: BLUE }}>€{priceBreakdown.costoOre}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: "15px" }}>
               <label style={{ color: "#9ca3af", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px", marginBottom: "5px" }}>
                 <FaPalette size={12} style={{ color: BLUE }} /> Colore
@@ -1341,11 +1603,26 @@ const handlePrintTicket = async (tipo: string) => {
               </div>
             )}
 
-            {/* SERVIZI LAVAGGIO */}
+            {/* 🔥 SERVIZI LAVAGGIO - MODIFICABILI IN USCITA */}
             <div style={{ marginBottom: "20px" }}>
               <h4 style={{ color: BLUE, marginBottom: "10px", fontSize: "14px", display: "flex", alignItems: "center", gap: "4px" }}>
-                <FaSoap /> Servizi Lavaggio
+                <FaSoap /> Servizi Lavaggio {washServices.length > 0 && `(${washServices.length})`}
               </h4>
+              
+              {/* Messaggio di caricamento */}
+              {(availableWashServices.length === 0 && !washServicesLoaded) && (
+                <div style={{ padding: "10px", background: "#f59e0b20", borderRadius: "6px", marginBottom: "10px", fontSize: "12px", color: "#f59e0b" }}>
+                  ⚠️ Caricamento servizi in corso...
+                </div>
+              )}
+              
+              {/* Messaggio quando non ci sono servizi disponibili */}
+              {availableWashServices.length === 0 && washServicesLoaded && (
+                <div style={{ fontSize: "11px", color: "#9ca3af", marginTop: "8px", textAlign: "center" }}>
+                  Nessun servizio lavaggio disponibile per questa categoria
+                </div>
+              )}
+              
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
                 {availableWashServices.map((service) => {
                   const isSelected = washServices.some(ws => ws.washServiceId === service.washServiceId);
@@ -1359,6 +1636,8 @@ const handlePrintTicket = async (tipo: string) => {
                         border: `1px solid ${isSelected ? "#4f8cff" : "#444"}`,
                         borderRadius: "6px",
                         cursor: "pointer",
+                        opacity: isSelected ? 1 : 0.7,
+                        transition: "all 0.2s"
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
@@ -1369,10 +1648,27 @@ const handlePrintTicket = async (tipo: string) => {
                         <span>⏱ {service.durationMinutes}min</span>
                         <span>🎯 {service.fidelityPoints}pt</span>
                       </div>
+                      {isSelected && (
+                        <div style={{
+                          fontSize: "9px",
+                          color: "#10b981",
+                          marginTop: "4px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px"
+                        }}>
+                          <FaCheckCircle size={8} /> Selezionato
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
+              {washServices.length === 0 && availableWashServices.length > 0 && (
+                <div style={{ fontSize: "11px", color: "#9ca3af", marginTop: "8px", textAlign: "center" }}>
+                  Nessun servizio lavaggio selezionato
+                </div>
+              )}
             </div>
 
             {/* CONVENZIONI */}
@@ -1656,13 +1952,13 @@ const handlePrintTicket = async (tipo: string) => {
                   </div>
                   
                   <div style={{ display: "flex", gap: "5px", marginBottom: "5px", flexWrap: "wrap" }}>
-                    <button onClick={() => handleScontoChange(-5)} style={scontoButtonStyle(-5, true)}>-5€</button>
-                    <button onClick={() => handleScontoChange(-1)} style={scontoButtonStyle(-1, true)}>-1€</button>
-                    <span style={scontoDisplayStyle(scontoManuale)}>
+                    <button onClick={() => handleScontoChange(-5)} style={{ padding: "8px 12px", background: "#10b981", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>-5€</button>
+                    <button onClick={() => handleScontoChange(-1)} style={{ padding: "8px 12px", background: "#10b981", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>-1€</button>
+                    <span style={{ flex: 1, padding: "8px", background: "#1a1f25", borderRadius: "6px", textAlign: "center", color: scontoManuale !== 0 ? (scontoManuale > 0 ? "#10b981" : "#ef4444") : "#fff", fontWeight: "bold", fontSize: "14px", minWidth: "60px" }}>
                       {scontoManuale !== 0 ? `€${scontoManuale.toFixed(2)}` : "€0"}
                     </span>
-                    <button onClick={() => handleScontoChange(1)} style={scontoButtonStyle(1, false)}>+1€</button>
-                    <button onClick={() => handleScontoChange(5)} style={scontoButtonStyle(5, false)}>+5€</button>
+                    <button onClick={() => handleScontoChange(1)} style={{ padding: "8px 12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>+1€</button>
+                    <button onClick={() => handleScontoChange(5)} style={{ padding: "8px 12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>+5€</button>
                   </div>
                 </div>
 
@@ -1753,7 +2049,7 @@ const handlePrintTicket = async (tipo: string) => {
                   <button
                     onClick={handlePayment}
                     disabled={isProcessing}
-                    style={actionButtonStyle("#10b981", isProcessing)}
+                    style={{ width: "100%", padding: "12px", background: "#10b981", border: "none", borderRadius: "8px", color: "#fff", fontSize: "14px", fontWeight: "bold", cursor: isProcessing ? "not-allowed" : "pointer", opacity: isProcessing ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}
                   >
                     <FaCheckCircle /> {isProcessing ? "PROCESSING..." : "CONFERMA USCITA"}
                   </button>
@@ -1761,44 +2057,44 @@ const handlePrintTicket = async (tipo: string) => {
                   <button
                     onClick={handlePagamentoDifferito}
                     disabled={isProcessing}
-                    style={actionButtonStyle("#f59e0b", isProcessing)}
+                    style={{ width: "100%", padding: "12px", background: "#f59e0b", border: "none", borderRadius: "8px", color: "#fff", fontSize: "14px", fontWeight: "bold", cursor: isProcessing ? "not-allowed" : "pointer", opacity: isProcessing ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}
                   >
                     💳 PAGAMENTO DIFFERITO
                   </button>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                    <button onClick={() => handlePrintTicket('uscita')} style={printButtonStyle}>
+                    <button onClick={() => handlePrintTicket('uscita')} style={{ padding: "8px", background: "#4f8cff", border: "none", borderRadius: "6px", color: "#fff", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}>
                       <FaPrint /> Ticket uscita
                     </button>
                     <button 
                       onClick={() => handlePrintTicket('lavaggio')}
                       disabled={washServices.length === 0}
-                      style={printButtonStyleWash(washServices.length > 0)}
+                      style={{ padding: "8px", background: washServices.length > 0 ? "#10b981" : "#2d2d3a", border: "none", borderRadius: "6px", color: "#fff", cursor: washServices.length > 0 ? "pointer" : "not-allowed", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", opacity: washServices.length > 0 ? 1 : 0.5 }}
                     >
                       <FaPrint /> Ticket lavaggio
                     </button>
                   </div>
 
-                  <button onClick={handleResetAll} style={resetButtonStyle}>
+                  <button onClick={handleResetAll} style={{ width: "100%", padding: "8px", background: "transparent", border: "1px solid #666", borderRadius: "6px", color: "#fff", cursor: "pointer", fontSize: "12px", marginTop: "5px" }}>
                     Deseleziona tutto
                   </button>
                 </div>
               </>
             ) : status === "paid" ? (
-              <div style={paidStyle}>
+              <div style={{ background: "#10b981", padding: "30px", borderRadius: "8px", textAlign: "center", color: "#fff" }}>
                 <FaCheckCircle size={48} style={{ marginBottom: "15px" }} />
                 <h3>Uscita registrata!</h3>
               </div>
             ) : status === "error" ? (
-              <div style={errorStyle}>
+              <div style={{ background: "#ef4444", padding: "30px", borderRadius: "8px", textAlign: "center", color: "#fff" }}>
                 <FaExclamationTriangle size={48} style={{ marginBottom: "15px" }} />
                 <h3>Ticket non valido</h3>
               </div>
             ) : (
-              <div style={emptyStateStyle}>
+              <div style={{ color: "#9ca3af", textAlign: "center", padding: "40px" }}>
                 <FaTicketAlt size={48} style={{ opacity: 0.3, marginBottom: "10px" }} />
                 <p>Inserisci il ticket per iniziare</p>
-                <button onClick={() => setShowTicketModal(true)} style={ticketButtonStyle}>
+                <button onClick={() => setShowTicketModal(true)} style={{ marginTop: "20px", padding: "10px 20px", background: BLUE, border: "none", borderRadius: "6px", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto", marginRight: "auto" }}>
                   <FaTicketAlt /> Inserisci ticket
                 </button>
               </div>
@@ -1809,8 +2105,8 @@ const handlePrintTicket = async (tipo: string) => {
 
       {/* Modal per insoluti */}
       {showOutstandingModal && outstandingDebts.length > 0 && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}>
+          <div style={{ background: BG_DARK, padding: "30px", borderRadius: "12px", maxWidth: "500px", width: "90%", border: "2px solid #f59e0b" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "15px", marginBottom: "20px" }}>
               <FaExclamationTriangle size={32} color="#f59e0b" />
               <h2 style={{ color: "#fff", margin: 0 }}>Pagamenti insoluti rilevati</h2>
@@ -1822,7 +2118,7 @@ const handlePrintTicket = async (tipo: string) => {
 
             <div style={{ marginBottom: "20px" }}>
               {outstandingDebts.map((debt, idx) => (
-                <div key={idx} style={debtItemStyle}>
+                <div key={idx} style={{ padding: "15px", background: BG_LIGHTER, borderRadius: "8px", marginBottom: "10px", border: "1px solid #333" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
                     <span style={{ color: "#9ca3af" }}>{debt.description || `Insoluto #${idx+1}`}</span>
                     <span style={{ color: "#f59e0b", fontWeight: "bold" }}>€ {debt.amount.toFixed(2)}</span>
@@ -1830,7 +2126,7 @@ const handlePrintTicket = async (tipo: string) => {
                 </div>
               ))}
               
-              <div style={debtTotalStyle}>
+              <div style={{ padding: "15px", background: BG_LIGHTER, borderRadius: "8px", marginTop: "10px", border: "1px solid #333", fontWeight: "bold" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "#fff" }}>Totale insoluti:</span>
                   <span style={{ color: "#f59e0b" }}>€ {totalePendenti.toFixed(2)}</span>
@@ -1839,10 +2135,10 @@ const handlePrintTicket = async (tipo: string) => {
             </div>
 
             <div style={{ display: "flex", gap: "10px" }}>
-              <button onClick={() => handleIncludeDebts(true)} style={includeButtonStyle}>
+              <button onClick={() => handleIncludeDebts(true)} style={{ flex: 1, padding: "15px", background: "#f59e0b", border: "none", borderRadius: "8px", color: "#fff", cursor: "pointer", fontWeight: "bold" }}>
                 Includi nel pagamento
               </button>
-              <button onClick={() => handleIncludeDebts(false)} style={excludeButtonStyle}>
+              <button onClick={() => handleIncludeDebts(false)} style={{ flex: 1, padding: "15px", background: "transparent", border: "1px solid #333", borderRadius: "8px", color: "#fff", cursor: "pointer" }}>
                 Paga solo questa sosta
               </button>
             </div>
@@ -1864,184 +2160,3 @@ const handlePrintTicket = async (tipo: string) => {
     </div>
   );
 }
-
-/* ======================================================
-   STILI AUSILIARI
-   ====================================================== */
-const scontoButtonStyle = (value: number, isSconto: boolean) => ({
-  padding: "8px 12px",
-  background: isSconto ? "#10b981" : "#ef4444",
-  color: "#fff",
-  border: "none",
-  borderRadius: "6px",
-  cursor: "pointer",
-  fontSize: "12px",
-  fontWeight: "bold" as const
-});
-
-const scontoDisplayStyle = (valore: number) => ({
-  flex: 1,
-  padding: "8px",
-  background: "#1a1f25",
-  borderRadius: "6px",
-  textAlign: "center" as const,
-  color: valore !== 0 ? (valore > 0 ? "#10b981" : "#ef4444") : "#fff",
-  fontWeight: "bold" as const,
-  fontSize: "14px",
-  minWidth: "60px"
-});
-
-const actionButtonStyle = (bgColor: string, isProcessing: boolean) => ({
-  width: "100%",
-  padding: "12px",
-  background: bgColor,
-  border: "none",
-  borderRadius: "8px",
-  color: "#fff",
-  fontSize: "14px",
-  fontWeight: "bold" as const,
-  cursor: isProcessing ? "not-allowed" : "pointer",
-  opacity: isProcessing ? 0.5 : 1,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "10px"
-});
-
-const printButtonStyle = {
-  padding: "8px",
-  background: "#4f8cff",
-  border: "none",
-  borderRadius: "6px",
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: "11px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "4px"
-};
-
-const printButtonStyleWash = (enabled: boolean) => ({
-  padding: "8px",
-  background: enabled ? "#10b981" : "#2d2d3a",
-  border: "none",
-  borderRadius: "6px",
-  color: "#fff",
-  cursor: enabled ? "pointer" : "not-allowed",
-  fontSize: "11px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "4px",
-  opacity: enabled ? 1 : 0.5
-});
-
-const resetButtonStyle = {
-  width: "100%",
-  padding: "8px",
-  background: "transparent",
-  border: "1px solid #666",
-  borderRadius: "6px",
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: "12px",
-  marginTop: "5px"
-};
-
-const paidStyle = {
-  background: "#10b981",
-  padding: "30px",
-  borderRadius: "8px",
-  textAlign: "center" as const,
-  color: "#fff"
-};
-
-const errorStyle = {
-  background: "#ef4444",
-  padding: "30px",
-  borderRadius: "8px",
-  textAlign: "center" as const,
-  color: "#fff"
-};
-
-const emptyStateStyle = {
-  color: "#9ca3af",
-  textAlign: "center" as const,
-  padding: "40px"
-};
-
-const ticketButtonStyle = {
-  marginTop: "20px",
-  padding: "10px 20px",
-  background: BLUE,
-  border: "none",
-  borderRadius: "6px",
-  color: "#fff",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  marginLeft: "auto",
-  marginRight: "auto"
-};
-
-const modalOverlayStyle = {
-  position: "fixed" as const,
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: "rgba(0,0,0,0.8)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 2000
-};
-
-const modalContentStyle = {
-  background: BG_DARK,
-  padding: "30px",
-  borderRadius: "12px",
-  maxWidth: "500px",
-  width: "90%",
-  border: `2px solid #f59e0b`
-};
-
-const debtItemStyle = {
-  padding: "15px",
-  background: BG_LIGHTER,
-  borderRadius: "8px",
-  marginBottom: "10px",
-  border: "1px solid #333"
-};
-
-const debtTotalStyle = {
-  padding: "15px",
-  background: BG_LIGHTER,
-  borderRadius: "8px",
-  marginTop: "10px",
-  border: "1px solid #333",
-  fontWeight: "bold" as const
-};
-
-const includeButtonStyle = {
-  flex: 1,
-  padding: "15px",
-  background: "#f59e0b",
-  border: "none",
-  borderRadius: "8px",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: "bold" as const
-};
-
-const excludeButtonStyle = {
-  flex: 1,
-  padding: "15px",
-  background: "transparent",
-  border: "1px solid #333",
-  borderRadius: "8px",
-  color: "#fff",
-  cursor: "pointer"
-};

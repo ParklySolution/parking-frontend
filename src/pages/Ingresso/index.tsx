@@ -640,14 +640,14 @@ export default function Ingresso() {
 
       console.log("📊 washServicesDetails:", washServicesDetails);
 
-      // 🔍 LOG 2: Verifica parametri prima della chiamata
+      // 🔥 CORRETTO: usa createParkingSessionWithWash per i lavaggi
       console.log("🚿 Parametri per createParkingSessionWithWash:", {
         tenantId,
         categoryId,
         customerId: lookup.status === "found" ? lookup.customer.id : null,
         subscriptionId: lookup.subscription?.id ?? null,
         conventionId: selectedConventionId,
-        washServices: washServices.map(ws => ws.washServiceId), // ✅ CORRETTO
+        washServices: washServices,
         plate: plateUpper,
         brandName,
         modelName,
@@ -659,21 +659,21 @@ export default function Ingresso() {
       });
 
       const result = await createParkingSessionWithWash({
-        tenantId,
-        categoryId,
-        customerId: lookup.status === "found" ? lookup.customer.id : null,
-        subscriptionId: lookup.subscription?.id ?? null,
-        conventionId: selectedConventionId,
-        washServices,
-        plate: plateUpper,
-        brandName,
-        modelName,
-        categoryName,
-        color,
-        vehicleProfileId,
-        calculatedAmount: combinedTotal,
-        notes: notes || undefined,
-      });
+  tenantId,
+  categoryId,
+  customerId: lookup.status === "found" ? lookup.customer.id : null,
+  subscriptionId: lookup.subscription?.id ?? null,
+  conventionId: selectedConventionId,
+  washServices: washServices,
+  plate: plateUpper,
+  brandName,
+  modelName,
+  categoryName,
+  color,
+  vehicleProfileId,
+  calculatedAmount: combinedTotal,
+  notes: notes || undefined,
+});
 
       // 🔍 LOG 3: Verifica risultato
       console.log("✅ Risultato createParkingSessionWithWash:", result);
@@ -728,8 +728,10 @@ export default function Ingresso() {
         notes: notes ? [notes] : undefined
       });
 
+      console.log("✅ Ticket lavaggio stampato con successo");
+
     } catch (err) {
-      console.error(err);
+      console.error("❌ Errore durante la creazione del ticket lavaggio:", err);
       alert("Errore durante la creazione del ticket lavaggio");
     }
   };
@@ -838,8 +840,10 @@ export default function Ingresso() {
         notes: notes ? [notes] : undefined
       });
 
+      console.log("✅ Ticket convenzione stampato con successo");
+
     } catch (err) {
-      console.error(err);
+      console.error("❌ Errore durante la creazione del ticket convenzione:", err);
       alert("Errore durante la creazione del ticket convenzione");
     }
   };

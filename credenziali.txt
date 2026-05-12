@@ -26,7 +26,7 @@ Email USER
 email user SuperAdmin
 
 E-mail: founder@park-ly.it
-Password: Tombstone78!
+Password: SuperAdmin2025!
 
 User UID: a43fa4e7-f209-4632-b843-ad5e583b7f8c
 

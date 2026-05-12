@@ -454,13 +454,38 @@ export async function calculateParkingBonusFromWash(
     return { totalBonusHours: 0, bonusDetails: [] };
   }
 
-  const today = new Date().getDay(); // 0 = domenica, 1 = lunedì, ...
+  const today = new Date().getDay();
   const bonusDetails = [];
   let totalBonusHours = 0;
 
   for (const service of washServices) {
+    // 🔥 PASSO 1: Leggi parking_bonus_hours dal wash_service_catalog
     try {
-      // Cerca regole bonus attive per questo servizio - usa washServiceId
+      const { data: serviceData, error: serviceError } = await supabase
+        .from("wash_service_catalog")
+        .select("id, name, parking_bonus_hours, base_price")
+        .eq("id", service.washServiceId)
+        .maybeSingle();
+
+      if (!serviceError && serviceData) {
+        // Bonus ore dirette dal servizio
+        if (serviceData.parking_bonus_hours && serviceData.parking_bonus_hours > 0) {
+          const bonusHours = Number(serviceData.parking_bonus_hours);
+          totalBonusHours += bonusHours;
+          bonusDetails.push({
+            serviceId: service.washServiceId,
+            bonusHours,
+            bonusType: "parking_bonus_hours"
+          });
+          console.log(`🎁 Bonus diretto da ${serviceData.name}: ${bonusHours} ore gratis`);
+        }
+      }
+    } catch (error) {
+      console.error("Errore lettura parking_bonus_hours:", error);
+    }
+
+    // 🔥 PASSO 2: Regole complesse in wash_parking_bonus_rules
+    try {
       const { data: rules, error } = await supabase
         .from("wash_parking_bonus_rules")
         .select("*")
@@ -471,23 +496,21 @@ export async function calculateParkingBonusFromWash(
       if (error) throw error;
       if (!rules || rules.length === 0) continue;
 
-      // Filtra regole applicabili
       for (const rule of rules) {
-        // Filtra per categorie applicabili
+        // Filtra per categorie
         if (rule.applicable_categories && 
             rule.applicable_categories.length > 0 && 
             !rule.applicable_categories.includes(categoryId)) {
           continue;
         }
 
-        // Filtra per giorni validi
+        // Filtra per giorni
         if (rule.valid_days_of_week && 
             rule.valid_days_of_week.length > 0 && 
             !rule.valid_days_of_week.includes(today)) {
           continue;
         }
 
-        // Applica bonus in base al tipo
         let bonusHours = 0;
         
         switch (rule.bonus_type) {
@@ -495,13 +518,11 @@ export async function calculateParkingBonusFromWash(
             bonusHours = Number(rule.bonus_value);
             break;
           case 'free_parking':
-            bonusHours = 24; // Intera giornata gratis
+            bonusHours = 24;
             break;
           case 'discount_percentage':
-            // Non sono ore, ma percentuale - lo gestiamo dopo
-            break;
           case 'fixed_discount':
-            // Non sono ore, ma importo fisso - lo gestiamo dopo
+            // Non sono ore, verranno gestiti altrove
             break;
         }
 
@@ -512,13 +533,15 @@ export async function calculateParkingBonusFromWash(
             bonusHours,
             bonusType: rule.bonus_type
           });
+          console.log(`🎁 Bonus da regola ${rule.bonus_type}: ${bonusHours} ore gratis`);
         }
       }
     } catch (error) {
-      console.error("Errore calcolo bonus ore:", error);
+      console.error("Errore calcolo bonus regole:", error);
     }
   }
 
+  console.log(`🎁 TOTALE BONUS ORE: ${totalBonusHours} ore`, bonusDetails);
   return { totalBonusHours, bonusDetails };
 }
 

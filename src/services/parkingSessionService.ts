@@ -277,38 +277,105 @@ async function createTicketRecord(
 }
 
 export async function fetchOpenSessionByTicket(tenantId: string, ticketNumber: number) {
-  const { data, error } = await supabase
+  console.log("🔍 fetchOpenSessionByTicket chiamato per:", { tenantId, ticketNumber });
+  
+  // 1. Recupera la sessione
+  const { data: session, error: sessionError } = await supabase
     .from("parking_sessions")
-    .select(`
-      *,
-      parking_session_vehicles (*),
-      parking_session_wash_services (*)
-    `)
+    .select("*")
     .eq("tenant_id", tenantId)
     .eq("ticket_number", ticketNumber)
     .eq("status", "open") 
     .maybeSingle();
 
-  if (error) {
-    console.error("❌ Errore nella fetchOpenSessionByTicket:", error);
-    throw error;
+  if (sessionError) {
+    console.error("❌ Errore recupero sessione:", sessionError);
+    throw sessionError;
   }
-  return data;
+
+  if (!session) {
+    console.log("❌ Sessione non trovata per ticket:", ticketNumber);
+    return null;
+  }
+
+  console.log("✅ Sessione trovata:", session.id);
+
+  // 2. Recupera i veicoli associati
+  const { data: vehicles, error: vehiclesError } = await supabase
+    .from("parking_session_vehicles")
+    .select("*")
+    .eq("parking_session_id", session.id);
+
+  if (vehiclesError) {
+    console.error("❌ Errore recupero veicoli:", vehiclesError);
+  }
+
+  // 3. Recupera i wash services associati
+  const { data: washServices, error: washError } = await supabase
+    .from("parking_session_wash_services")
+    .select("*")
+    .eq("parking_session_id", session.id);
+
+  if (washError) {
+    console.error("❌ Errore recupero wash services:", washError);
+  }
+
+  console.log("🧼 Wash services trovati:", washServices?.length || 0);
+  console.log("💰 Prezzi wash services:", washServices?.map(ws => ({ 
+    name: ws.wash_service_name, 
+    price: ws.wash_service_price 
+  })));
+
+  // 4. Combina tutto
+  return {
+    ...session,
+    parking_session_vehicles: vehicles || [],
+    parking_session_wash_services: washServices || []
+  };
 }
 
 export async function fetchSessionWithWashServices(sessionId: string) {
-  const { data, error } = await supabase
+  console.log("🔍 fetchSessionWithWashServices chiamato per sessionId:", sessionId);
+  
+  // 1. Recupera la sessione
+  const { data: session, error: sessionError } = await supabase
     .from("parking_sessions")
-    .select(`
-      *,
-      parking_session_vehicles (*),
-      parking_session_wash_services (*)
-    `)
+    .select("*")
     .eq("id", sessionId)
     .single();
 
-  if (error) throw error;
-  return data;
+  if (sessionError) {
+    console.error("❌ Errore recupero sessione:", sessionError);
+    throw sessionError;
+  }
+
+  // 2. Recupera i veicoli associati
+  const { data: vehicles, error: vehiclesError } = await supabase
+    .from("parking_session_vehicles")
+    .select("*")
+    .eq("parking_session_id", sessionId);
+
+  if (vehiclesError) {
+    console.error("❌ Errore recupero veicoli:", vehiclesError);
+  }
+
+  // 3. Recupera i wash services associati
+  const { data: washServices, error: washError } = await supabase
+    .from("parking_session_wash_services")
+    .select("*")
+    .eq("parking_session_id", sessionId);
+
+  if (washError) {
+    console.error("❌ Errore recupero wash services:", washError);
+  }
+
+  console.log("🧼 Wash services trovati:", washServices?.length || 0);
+
+  return {
+    ...session,
+    parking_session_vehicles: vehicles || [],
+    parking_session_wash_services: washServices || []
+  };
 }
 
 export async function updateWashServiceStatus({
