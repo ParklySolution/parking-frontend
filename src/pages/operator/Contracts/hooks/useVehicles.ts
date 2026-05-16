@@ -1,5 +1,5 @@
 // src/pages/operator/Contracts/hooks/useVehicles.ts
-// FORCE REFRESH - 02/03/2026 - 16:30
+// FORCE REFRESH - 13/05/2026
 import { useState, useEffect } from "react";
 import type { Vehicle } from "../types";
 import type { Tariff } from "../types";
@@ -8,7 +8,7 @@ import type { VehicleBrand } from "@/services/vehicleBrandService";
 import { fetchVehicleModels } from "@/services/vehicleModelService";
 import type { VehicleModel } from "@/services/vehicleModelService";
 
-console.log("Tariff type exists:", typeof Tariff); // Questo mostrerà se Tariff è definito
+console.log("Tariff type exists:", typeof Tariff);
 
 export function useVehicles(tenantId: string | undefined) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([
@@ -20,9 +20,12 @@ export function useVehicles(tenantId: string | undefined) {
       model_id: "",
       brand_id: "",
       category_id: "",
+      category_name: "",
       year: "",
       color: "",
       color_id: "",
+      monthly_price: "",           // 🔥 NUOVO CAMPO
+      has_parking_included: false,  // 🔥 NUOVO CAMPO
       tariffs: [
         {
           id: 1,
@@ -54,7 +57,7 @@ export function useVehicles(tenantId: string | undefined) {
     setLoadingBrands(true);
     try {
       const data = await fetchVehicleBrands(tenantId);
-      console.log("📦 Marche ricevute in useVehicles:", data);  // <-- AGGIUNGI QUESTO
+      console.log("📦 Marche ricevute in useVehicles:", data);
       setBrands(data);
     } catch (error) {
       console.error("Errore caricamento marche:", error);
@@ -88,9 +91,12 @@ export function useVehicles(tenantId: string | undefined) {
         model_id: "",
         brand_id: "",
         category_id: "",
+        category_name: "",
         year: "",
         color: "",
         color_id: "",
+        monthly_price: "",           // 🔥 NUOVO CAMPO
+        has_parking_included: false,  // 🔥 NUOVO CAMPO
         tariffs: [
           {
             id: 1,
@@ -115,38 +121,37 @@ export function useVehicles(tenantId: string | undefined) {
   };
 
   const updateVehicle = (vehicleId: number, field: string, value: string) => {
-  setVehicles(prev =>
-    prev.map(v => {
-      if (v.id !== vehicleId) return v;
+    setVehicles(prev =>
+      prev.map(v => {
+        if (v.id !== vehicleId) return v;
 
-      const updated = { ...v, [field]: value };
+        const updated = { ...v, [field]: value };
 
-      // Se cambia la marca
-      if (field === "brand_id" && value) {
-        updated.model = "";
-        updated.model_id = "";
-        updated.category_id = "";
+        // Se cambia la marca
+        if (field === "brand_id" && value) {
+          updated.model = "";
+          updated.model_id = "";
+          updated.category_id = "";
 
-        loadModelsForBrand(value);
+          loadModelsForBrand(value);
 
-        const selectedBrand = brands.find(b => b.id === value);
-        updated.make = selectedBrand?.name || "";
-      }
-
-      // Se cambia il modello
-      if (field === "model_id" && value) {
-        const selectedModel = models.find(m => m.id === value);
-        if (selectedModel) {
-          updated.model = selectedModel.name;
-          updated.category_id = selectedModel.category_id;
+          const selectedBrand = brands.find(b => b.id === value);
+          updated.make = selectedBrand?.name || "";
         }
-      }
 
-      return updated;
-    })
-  );
-};
+        // Se cambia il modello
+        if (field === "model_id" && value) {
+          const selectedModel = models.find(m => m.id === value);
+          if (selectedModel) {
+            updated.model = selectedModel.name;
+            updated.category_id = selectedModel.category_id;
+          }
+        }
 
+        return updated;
+      })
+    );
+  };
 
   const addTariff = (vehicleId: number) => {
     setVehicles(vehicles.map(v => 
@@ -200,9 +205,12 @@ export function useVehicles(tenantId: string | undefined) {
         model_id: "",
         brand_id: "",
         category_id: "",
+        category_name: "",
         year: "",
         color: "",
         color_id: "",
+        monthly_price: "",           // 🔥 NUOVO CAMPO
+        has_parking_included: false,  // 🔥 NUOVO CAMPO
         tariffs: [
           {
             id: 1,

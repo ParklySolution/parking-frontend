@@ -16,9 +16,11 @@ export interface Vehicle {
   model_id?: string;
   brand_id?: string;
   category_id?: string;
+  category_name?: string;
   year: string;
   color: string;
   color_id?: string;
+  monthly_price?: string;  // 🔥 AGGIUNGI QUESTO
   tariffs: Tariff[];
 }
 
@@ -64,6 +66,7 @@ export interface ContractTemplate {
   default_duration_months: number | null;
   default_price: number | null;
   is_active: boolean;
+  config?: any;  // Configurazione opzionale del template
 }
 
 export interface ContractTerm {

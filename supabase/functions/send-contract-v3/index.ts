@@ -11,6 +11,9 @@ Deno.serve(async (req) => {
 
   try {
     const { to, customerName, contractNumber, filePath } = await req.json()
+    
+    console.log("📧 Richiesta invio email:", { to, customerName, contractNumber, filePath })
+    
     const resend = new Resend(Deno.env.get('RESEND_API_KEY'))
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -21,26 +24,49 @@ Deno.serve(async (req) => {
     const { data: linkData, error: linkError } = await supabaseAdmin
       .storage
       .from('contracts')
-      .createSignedUrl(filePath, 86400)
+      .createSignedUrl(filePath, 86400) // 24 ore
 
-    if (linkError) throw new Error("Errore link storage: " + linkError.message)
+    if (linkError) {
+      console.error("❌ Errore link storage:", linkError)
+      throw new Error("Errore link storage: " + linkError.message)
+    }
 
-    // INVIO - Usiamo il mittente di test per bypassare i problemi di IONOS per ora
+    console.log("✅ Link PDF generato per:", to)
+
+    // 🔥 CORREZIONE 1: usa il destinatario dinamico
+    // 🔥 CORREZIONE 2: usa il tuo dominio verificato su Resend
     const { data, error } = await resend.emails.send({
-      from: 'Park-ly <onboarding@resend.dev>', 
-      to: ['garagesolution25@gmail.com'], // MANDALO A TE STESSO PER TESTARE IL PDF
+      from: 'Park-ly <noreply@park-ly.it>',  // ✅ TUO DOMINIO
+      to: [to],                               // ✅ DINAMICO
       subject: `Contratto Park-ly: ${contractNumber}`,
       html: `
         <h2>Ciao ${customerName},</h2>
         <p>Il contratto <b>${contractNumber}</b> è pronto.</p>
-        <a href="${linkData.signedUrl}" style="background:#2563eb;color:white;padding:10px;text-decoration:none;border-radius:5px;">SCARICA PDF</a>
+        <p>Puoi scaricarlo cliccando sul link qui sotto:</p>
+        <a href="${linkData.signedUrl}" style="background:#2563eb;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">📄 SCARICA PDF</a>
+        <hr>
+        <p style="font-size:12px;color:#666;">Questo link è valido per 24 ore.</p>
+        <p style="font-size:12px;color:#666;">Cordiali saluti,<br>Il team di Park-ly</p>
       `,
     })
 
-    if (error) throw error
-    return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 })
+    if (error) {
+      console.error("❌ Errore invio email:", error)
+      throw error
+    }
+    
+    console.log("✅ Email inviata con successo a:", to)
+    
+    return new Response(JSON.stringify({ success: true }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+      status: 200 
+    })
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 })
+    console.error("❌ Errore nella funzione:", error.message)
+    return new Response(JSON.stringify({ error: error.message }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+      status: 400 
+    })
   }
 })

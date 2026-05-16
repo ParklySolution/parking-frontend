@@ -1,7 +1,8 @@
-// src/pages/operator/Contracts/index.tsx
+// src/pages/operator/Contracts/index.tsx - VERSIONE COMPLETA CORRETTA
+
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { FaFileContract } from "react-icons/fa";
+import { FaFileContract, FaUser, FaHome, FaIdCard, FaCar, FaFileAlt } from "react-icons/fa";
 
 // Componenti
 import { TabButton } from "./components/ui/TabButton";
@@ -43,6 +44,27 @@ interface TemplateConfig {
   show_contract_price: boolean;
   layout: string;
 }
+
+// 🔥 CONFIGURAZIONE DEFAULT PER I TEMPLATE (INCLUSI TUTTI I CAMPI)
+const DEFAULT_TEMPLATE_CONFIG: TemplateConfig = {
+  type: 'standard',
+  sections: ['anagrafica', 'residenza', 'documento', 'veicolo', 'contratto'],
+  required_fields: {
+    customer: [
+      'first_name', 'last_name', 'fiscal_code', 
+      'birth_date', 'birth_place', 
+      'address', 'city', 'postal_code', 'province',  // 🔥 CAMPI RESIDENZA
+      'email', 'phone',
+      'document_type', 'document_number', 'document_issue_date', 
+      'document_expiry_date', 'document_issuing_authority'  // 🔥 CAMPI DOCUMENTO
+    ],
+    vehicle: ['plate', 'make', 'model']
+  },
+  show_vehicle_tariffs: true,
+  show_contract_duration: true,
+  show_contract_price: true,
+  layout: 'completo'
+};
 
 export default function OperatorContracts() {
   const navigate = useNavigate();
@@ -106,35 +128,25 @@ export default function OperatorContracts() {
     print_copy: true
   });
 
-  // Determina le sezioni disponibili in base alla configurazione del template
-  const templateConfig = (selectedTemplate?.config as TemplateConfig) || {
-    sections: ['anagrafica', 'residenza', 'documento', 'veicolo', 'contratto'],
-    required_fields: {
-      customer: ['first_name', 'last_name', 'fiscal_code', 'birth_date', 'birth_place', 'address', 'city', 'email', 'phone'],
-      vehicle: ['plate', 'make', 'model']
-    },
-    show_vehicle_tariffs: true,
-    show_contract_duration: true,
-    show_contract_price: true,
-    layout: 'completo'
-  };
+  // 🔥 Determina la configurazione del template con FALLBACK
+  const templateConfig = (selectedTemplate?.config as TemplateConfig) || DEFAULT_TEMPLATE_CONFIG;
+  const safeSections = templateConfig?.sections || DEFAULT_TEMPLATE_CONFIG.sections;
+  const safeRequiredFields = templateConfig?.required_fields || DEFAULT_TEMPLATE_CONFIG.required_fields;
 
   const availableTabs = [
-    { id: 'anagrafica', label: 'Anagrafica', show: templateConfig.sections.includes('anagrafica') },
-    { id: 'residenza', label: 'Residenza', show: templateConfig.sections.includes('residenza') },
-    { id: 'documento', label: 'Documento', show: templateConfig.sections.includes('documento') },
-    { id: 'veicolo', label: 'Veicolo', show: templateConfig.sections.includes('veicolo') },
-    { id: 'contratto', label: 'Contratto', show: templateConfig.sections.includes('contratto') }
+    { id: 'anagrafica', label: 'Anagrafica', show: safeSections.includes('anagrafica') },
+    { id: 'residenza', label: 'Residenza', show: safeSections.includes('residenza') },
+    { id: 'documento', label: 'Documento', show: safeSections.includes('documento') },
+    { id: 'veicolo', label: 'Veicolo', show: safeSections.includes('veicolo') },
+    { id: 'contratto', label: 'Contratto', show: safeSections.includes('contratto') }
   ].filter(tab => tab.show);
 
-  // Se il tab attivo non è più disponibile, seleziona il primo disponibile
   useEffect(() => {
-    if (selectedTemplate && !availableTabs.find(tab => tab.id === activeTab) && availableTabs.length > 0) {
+    if (selectedTemplate && availableTabs.length > 0 && !availableTabs.find(tab => tab.id === activeTab)) {
       setActiveTab(availableTabs[0].id);
     }
   }, [selectedTemplate, availableTabs, activeTab]);
 
-  // Handlers
   const handleSelectType = (typeId: string) => {
     setSelectedType(typeId);
     setSelectedTemplate(null);
@@ -162,577 +174,433 @@ export default function OperatorContracts() {
   };
 
   const handleInputChange = (field: string, value: any) => {
+    console.log(`📝 handleInputChange: ${field} = ${value}`);
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // 🔥 GENERA HTML DEL CONTRATTO - VERSIONE COMPLETA
   const generateContractHTML = (): string => {
     if (!selectedTemplate || !companyInfo) return "";
 
-    let html = selectedTemplate.content;
+    let html = selectedTemplate.content || "";
     const term = selectedTemplate.terms_id ? terms[selectedTemplate.terms_id] : null;
 
-    console.log("📄 TEMPLATE ORIGINALE:", html.substring(0, 200) + "...");
-
-    // Pulisci eventuali {' '} dal template se presenti
+    // Pulisci eventuali placeholder malformati
+    html = html.replace(/\{\{\{\s*/g, '{{').replace(/\s*\}\}\}/g, '}}');
+    html = html.replace(/\{\{\s*/g, '{{').replace(/\s*\}\}/g, '}}');
     html = html.replace(/\{'\{/g, '{').replace(/\}'\}/g, '}');
 
-    // Genera HTML per veicoli multipli
-    const vehiclesHTML = vehicles.map(v => {
-      const tariffItems = v.tariffs
-        .filter(t => t.price && t.price !== "")
-        .map(t => `
-          <li>
-            <strong>${t.type}:</strong> ${t.description} - €${t.price}
-            ${t.valid_from ? ` (dal ${formatDate(t.valid_from)}` : ''}
-            ${t.valid_to ? ` al ${formatDate(t.valid_to)})` : ''}
-          </li>
-        `).join('');
+    // Helper per formattare le date
+    const formatDateHelper = (dateStr: string | undefined): string => {
+      if (!dateStr) return '';
+      try {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('it-IT');
+      } catch {
+        return '';
+      }
+    };
 
-      return `
-        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
-          <h4 style="margin-top: 0; color: #4f8cff;">Veicolo: ${v.make} ${v.model}</h4>
-          <p><strong>Targa:</strong> ${v.plate}</p>
-          <p><strong>Anno:</strong> ${v.year || 'N/D'} - <strong>Colore:</strong> ${v.color || 'N/D'}</p>
-          
-          ${tariffItems ? `
-            <p><strong>Tariffe applicate:</strong></p>
-            <ul style="margin-top: 5px;">
-              ${tariffItems}
-            </ul>
-          ` : '<p><em>Nessuna tariffa specificata</em></p>'}
-        </div>
-      `;
-    }).join('');
+    // Primo veicolo (per retrocompatibilità con placeholder singoli)
+    const primoVeicolo = vehicles.find(v => v.plate) || vehicles[0];
 
-    // Genera tabella riepilogo tariffe (solo se richiesto)
-    const allTariffs = vehicles.flatMap(v => 
-      v.tariffs
-        .filter(t => t.price && t.price !== "")
-        .map(t => ({
-          ...t,
-          vehicle: `${v.make} ${v.model} (${v.plate})`
-        }))
-    );
+    // Genera HTML per veicoli multipli (assicurati che includa TUTTI i veicoli)
+const vehiclesHTML = vehicles.filter(v => v.plate).map(v => `
+  <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+    <h4 style="margin-top: 0; color: #4f8cff;">Veicolo: ${v.make} ${v.model}</h4>
+    <p><strong>Targa:</strong> ${v.plate}</p>
+    <p><strong>Anno:</strong> ${v.year || 'N/D'} - <strong>Colore:</strong> ${v.color || 'N/D'}</p>
+    ${v.monthly_price ? `<p><strong>Canone mensile:</strong> € ${v.monthly_price}</p>` : ''}
+  </div>
+`).join('');
 
-    const tariffsTable = (templateConfig.show_vehicle_tariffs && allTariffs.length > 0) ? `
-      <h3>Riepilogo Tariffe</h3>
-      <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-        <thead>
-          <tr style="background: #4f8cff; color: white;">
-            <th style="padding: 10px; border: 1px solid #333;">Veicolo</th>
-            <th style="padding: 10px; border: 1px solid #333;">Tipo</th>
-            <th style="padding: 10px; border: 1px solid #333;">Descrizione</th>
-            <th style="padding: 10px; border: 1px solid #333;">Prezzo</th>
-            <th style="padding: 10px; border: 1px solid #333;">Validità</th>
-           </tr>
-        </thead>
-        <tbody>
-          ${allTariffs.map(t => `
-             <tr>
-              <td style="padding: 8px; border: 1px solid #ddd;">${t.vehicle}</td>
-              <td style="padding: 8px; border: 1px solid #ddd;">${t.type}</td>
-              <td style="padding: 8px; border: 1px solid #ddd;">${t.description}</td>
-              <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">€${t.price}</td>
-              <td style="padding: 8px; border: 1px solid #ddd;">
-                ${t.valid_from ? formatDate(t.valid_from) : ''} 
-                ${t.valid_to ? ` - ${formatDate(t.valid_to)}` : ''}
-              </td>
-             </tr>
-          `).join('')}
-        </tbody>
-       </table>
-    ` : '';
+console.log(`🔍 VEHICLES_HTML generato per ${vehicles.filter(v => v.plate).length} veicoli`);
 
-    console.log("🚗 vehiclesHTML generato:", vehiclesHTML ? "OK" : "VUOTO");
-    console.log("💰 tariffsTable generata:", tariffsTable ? "OK" : "VUOTA");
-    console.log("📊 vehicles count:", vehicles.length);
-    console.log("💰 tariffe totali:", allTariffs.length);
+    // Calcola il prezzo totale dai canoni mensili dei veicoli
+let totalMonthlyPrice = 0;
+for (const vehicle of vehicles) {
+  if (vehicle.monthly_price && vehicle.monthly_price !== "") {
+    totalMonthlyPrice += parseFloat(vehicle.monthly_price);
+  }
+}
 
+// Usa il prezzo calcolato dai veicoli, altrimenti usa formData.price come fallback
+const monthlyPrice = totalMonthlyPrice > 0 ? totalMonthlyPrice : (parseFloat(formData.price) || 0);
+const durationMonths = parseInt(formData.duration_months) || 0;
+const totalAmount = durationMonths * monthlyPrice;
+
+console.log("🔍 PREZZO CALCOLATO:", {
+  totalMonthlyPrice,
+  monthlyPrice,
+  durationMonths,
+  totalAmount
+});
+
+console.log("🔍 FORM DATA per PDF:", {
+  address: formData.address,
+  city: formData.city,
+  postal_code: formData.postal_code,
+  province: formData.province,
+  document_type: formData.document_type,
+  document_number: formData.document_number,
+  document_issue_date: formData.document_issue_date,
+  document_expiry_date: formData.document_expiry_date,
+  document_issuing_authority: formData.document_issuing_authority,
+});
+
+    // Costruisci la mappa dei placeholder
     const replacements: Record<string, string> = {
-      // DATI AZIENDA
-      '{{COMPANY_NAME}}': companyInfo.company_name || '',
-      '{{COMPANY_LEGAL_ADDRESS}}': companyInfo.legal_address || '',
-      '{{COMPANY_OPERATIONAL_ADDRESS}}': companyInfo.operational_address || companyInfo.legal_address || '',
-      '{{COMPANY_VAT}}': companyInfo.vat_number || '',
-      '{{COMPANY_TAXCODE}}': companyInfo.tax_code || '',
-      '{{COMPANY_EMAIL}}': companyInfo.email || '',
-      '{{COMPANY_PEC}}': companyInfo.pec || '',
-      '{{COMPANY_PHONE}}': companyInfo.phone || '',
-      '{{COMPANY_MOBILE}}': companyInfo.mobile || '',
-      '{{COMPANY_FAX}}': companyInfo.fax || '',
-      '{{COMPANY_WEBSITE}}': companyInfo.website || '',
+      // ========== DATI AZIENDA ==========
       '{{COMPANY_LOGO}}': companyInfo.logo_url ? `<img src="${companyInfo.logo_url}" style="max-height: 60px;">` : '',
+      '{{COMPANY_NAME}}': companyInfo.company_name || '',
       '{{COMPANY_ADDRESS}}': companyInfo.legal_address || '',
+      '{{COMPANY_LEGAL_ADDRESS}}': companyInfo.legal_address || '',
+      '{{COMPANY_VAT}}': companyInfo.vat_number || '',
+      '{{COMPANY_EMAIL}}': companyInfo.email || '',
+      '{{COMPANY_PHONE}}': companyInfo.phone || '',
+      '{{COMPANY_TAXCODE}}': companyInfo.tax_code || '',
       
-      // DATI CONTRATTO
-      '{{CONTRACT_TITLE}}': selectedTemplate.title || '',
+      // ========== DATI CONTRATTO ==========
+      '{{CONTRACT_TITLE}}': selectedTemplate.title || selectedTemplate.name || 'Contratto',
       '{{CONTRACT_NUMBER}}': generatedContract?.contract_number || `CONTR-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
       '{{CONTRACT_DATE}}': new Date().toLocaleDateString('it-IT'),
-      '{{CONTRACT_DURATION}}': templateConfig.show_contract_duration ? (formData.duration_months || '') : '',
-      '{{CONTRACT_AMOUNT}}': templateConfig.show_contract_price ? (formData.price || '') : '',
-      '{{CONTRACT_TOTAL}}': templateConfig.show_contract_price && formData.duration_months && formData.price 
-        ? (parseFloat(formData.duration_months) * parseFloat(formData.price)).toFixed(2) 
-        : '',
-      '{{PAYMENT_FREQUENCY}}': formData.payment_frequency || '',
-      '{{RENEWAL_AUTOMATIC}}': formData.renewal_automatic ? 'Sì' : 'No',
+      '{{CONTRACT_DURATION}}': durationMonths.toString(),
+      '{{CONTRACT_AMOUNT}}': monthlyPrice.toFixed(2),
+      '{{CONTRACT_TOTAL}}': totalAmount.toFixed(2),
       '{{NOTES}}': formData.notes || '',
-      '{{GENERATION_DATE}}': new Date().toLocaleString('it-IT'),
       
-      // DATI CLIENTE
+      // ========== DATI CLIENTE (Anagrafica) ==========
+      '{{CUSTOMER_FULLNAME}}': `${formData.first_name} ${formData.last_name}`.trim(),
       '{{CUSTOMER_FIRST_NAME}}': formData.first_name || '',
       '{{CUSTOMER_LAST_NAME}}': formData.last_name || '',
-      '{{CUSTOMER_FULLNAME}}': `${formData.first_name} ${formData.last_name}`.trim(),
       '{{CUSTOMER_FISCAL_CODE}}': formData.fiscal_code || '',
       '{{CUSTOMER_FISCALCODE}}': formData.fiscal_code || '',
-      '{{CUSTOMER_BIRTH_DATE}}': formatDate(formData.birth_date),
+      
+      // ========== DATI CLIENTE (Nascita) ==========
+      '{{CUSTOMER_BIRTH_DATE}}': formatDateHelper(formData.birth_date),
       '{{CUSTOMER_BIRTH_PLACE}}': formData.birth_place || '',
       '{{CUSTOMER_BIRTH_PROVINCE}}': formData.birth_province || '',
+      
+      // ========== DATI CLIENTE (Residenza) - 🔥 CORRETTI ==========
       '{{CUSTOMER_ADDRESS}}': formData.address || '',
       '{{CUSTOMER_CITY}}': formData.city || '',
       '{{CUSTOMER_POSTAL_CODE}}': formData.postal_code || '',
       '{{CUSTOMER_PROVINCE}}': formData.province || '',
+      
+      // ========== DATI CLIENTE (Contatti) ==========
       '{{CUSTOMER_EMAIL}}': formData.email || '',
       '{{CUSTOMER_PHONE}}': formData.phone || '',
       
-      // DOCUMENTO
+      // ========== DOCUMENTO DI RICONOSCIMENTO - 🔥 CORRETTI ==========
       '{{CUSTOMER_DOCUMENT_TYPE}}': formData.document_type || '',
       '{{CUSTOMER_DOCUMENT_NUMBER}}': formData.document_number || '',
-      '{{CUSTOMER_DOCUMENT_ISSUE_DATE}}': formatDate(formData.document_issue_date),
-      '{{CUSTOMER_DOCUMENT_EXPIRY_DATE}}': formatDate(formData.document_expiry_date),
       '{{CUSTOMER_DOCUMENT_ISSUING_AUTHORITY}}': formData.document_issuing_authority || '',
+      '{{CUSTOMER_DOCUMENT_ISSUE_DATE}}': formatDateHelper(formData.document_issue_date),
+      '{{CUSTOMER_DOCUMENT_EXPIRY_DATE}}': formatDateHelper(formData.document_expiry_date),
       
-      // VECCHI PLACEHOLDER (per compatibilità)
-      '{{VEHICLE_PLATE}}': vehicles[0]?.plate || formData.vehicle_plate || '',
-      '{{VEHICLE_MAKE}}': vehicles[0]?.make || formData.vehicle_make || '',
-      '{{VEHICLE_MODEL}}': vehicles[0]?.model || formData.vehicle_model || '',
+      // ========== VEICOLO (singolo - per retrocompatibilità) ==========
+      '{{VEHICLE_PLATE}}': primoVeicolo?.plate || '',
+      '{{VEHICLE_MAKE}}': primoVeicolo?.make || '',
+      '{{VEHICLE_MODEL}}': primoVeicolo?.model || '',
+      '{{VEHICLE_YEAR}}': primoVeicolo?.year || '',
+      '{{VEHICLE_COLOR}}': primoVeicolo?.color || '',
       
-      // NUOVI PLACEHOLDER per veicoli multipli
+      // ========== VEICOLI MULTIPLI ==========
       '{{VEHICLES_LIST}}': vehiclesHTML || '<p>Nessun veicolo registrato</p>',
-      '{{VEHICLES_COUNT}}': vehicles.length.toString(),
-      '{{TARIFFS_TABLE}}': tariffsTable,
-      '{{TOTAL_TARIFFS}}': allTariffs.length.toString(),
+      '{{VEHICLES_COUNT}}': vehicles.filter(v => v.plate).length.toString(),
       
-      // TERMINI
+      // ========== TERMINI E CONDIZIONI ==========
       '{{CONTRACT_TERMS}}': term?.content || '',
       '{{TERMS}}': term?.content || '',
+      
+      // ========== GENERAZIONE DOCUMENTO ==========
+      '{{GENERATION_DATE}}': new Date().toLocaleString('it-IT'),
     };
 
-    console.log("🔄 Placeholder disponibili per sostituzione:", Object.keys(replacements).length);
-    
-    // Conta quante sostituzioni vengono fatte
-    let sostituzioniEseguite = 0;
-    const sostituzioniTrovate: string[] = [];
+    // Sostituisci TUTTI i placeholder
+    console.log("🔍 Placeholder da sostituire:", Object.keys(replacements).length);
     
     Object.entries(replacements).forEach(([key, value]) => {
       if (html.includes(key)) {
-        sostituzioniEseguite++;
-        sostituzioniTrovate.push(key);
-        console.log(`✅ Trovato placeholder: ${key}`);
+        console.log(`✅ Sostituisco: ${key} -> ${value?.substring(0, 50) || '(vuoto)'}`);
       }
       const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-      html = html.replace(regex, value);
+      html = html.replace(regex, value || '');
     });
-
-    console.log("🔑 Placeholder trovati nel template:", sostituzioniTrovate);
-    console.log(`📊 Sostituzioni eseguite: ${sostituzioniEseguite} su ${Object.keys(replacements).length} disponibili`);
 
     return html;
   };
 
-  // Handle generazione contratto
-  const handleGenerateContract = async () => {
-    if (!selectedTemplate || !companyInfo || !tenantId) return;
+  // 🔥 GENERA CONTRATTO E SALVA NEL DB (VERSIONE COMPLETA CON VEICOLI)
+const handleGenerateContract = async () => {
+  if (!selectedTemplate || !companyInfo || !tenantId) return;
+  
+  setLoading(true);
+  
+  try {
+    const contractHTML = generateContractHTML();
+    const contractNumber = `CONTR-${new Date().getFullYear()}${(new Date().getMonth()+1).toString().padStart(2,'0')}${new Date().getDate().toString().padStart(2,'0')}-${Date.now().toString().slice(-6)}`;
+
+    // 1. CREA CLIENTE
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .insert({
+        tenant_id: tenantId,
+        type: 'private',
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        name: `${formData.first_name} ${formData.last_name}`.trim(),
+        fiscal_code: formData.fiscal_code || null,
+        birth_date: formData.birth_date || null,
+        birth_place: formData.birth_place || null,
+        address: formData.address || null,
+        city: formData.city || null,
+        postal_code: formData.postal_code || null,
+        province: formData.province || null,
+        email: formData.email || null,
+        phone: formData.phone || null,
+        document_type: formData.document_type || null,
+        document_number: formData.document_number || null,
+        document_issue_date: formData.document_issue_date || null,
+        document_expiry_date: formData.document_expiry_date || null,
+        document_issuing_authority: formData.document_issuing_authority || null,
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if (customerError) throw customerError;
+    console.log("✅ Cliente creato:", customer.id);
+
+    // 2. 🔥 SALVA I VEICOLI NEL DATABASE (VERSIONE CORRETTA)
+const vehicleIds: string[] = [];
+
+for (const vehicle of vehicles) {
+  if (!vehicle.plate) {
+    console.log("⚠️ Veicolo senza targa, saltato");
+    continue;
+  }
+  
+  const plate = vehicle.plate.toUpperCase().trim();
+  console.log(`🚗 Salvataggio veicolo: ${plate}`);
+  console.log(`   Dettagli: make=${vehicle.make}, model=${vehicle.model}, brand_id=${vehicle.brand_id}, model_id=${vehicle.model_id}`);
+  console.log(`   monthly_price=${vehicle.monthly_price}, color_id=${vehicle.color_id}, category_id=${vehicle.category_id}`);
+  
+  try {
+    // 2a. CERCA O CREA IL PROFILO VEICOLO
+let vehicleProfileId = null;
+
+// Prima cerca se esiste già
+const { data: existingProfile, error: searchError } = await supabase
+  .from('vehicle_profiles')
+  .select('id')
+  .eq('tenant_id', tenantId)
+  .eq('plate', plate)
+  .maybeSingle();
+
+if (searchError) {
+  console.error(`❌ Errore ricerca veicolo ${plate}:`, searchError);
+} else if (existingProfile) {
+  vehicleProfileId = existingProfile.id;
+  console.log(`✅ Veicolo già esistente: ${vehicleProfileId}`);
+} else {
+  // 🔥 INSERIMENTO MINIMALE (solo targa) - quello che ha funzionato
+  // Nel tuo handleGenerateContract, modifica la creazione del veicolo:
+
+console.log(`🆕 Creazione nuovo veicolo (minimale) per targa: ${plate}`);
+
+const { data: newProfile, error: profileError } = await supabase
+  .from('vehicle_profiles')
+  .insert({
+    tenant_id: tenantId,
+    plate: plate,
+    // 🔥 NON INSERIRE brand_id e model_id - solo targa
+    updated_at: new Date().toISOString()
+  })
+  .select()
+  .single();
+
+if (profileError) {
+  console.error(`❌ Errore creazione veicolo ${plate}:`, profileError);
+  continue;
+}
+
+vehicleProfileId = newProfile.id;
+console.log(`✅ Veicolo creato con ID: ${vehicleProfileId}`);
+
+// 🔥 NON fare l'update con brand_id e model_id
+  
+  // 🔥 DOPO aver creato il veicolo, aggiorna marca e modello separatamente
+  if (vehicle.brand_id || vehicle.model_id || vehicle.color_id || vehicle.category_id) {
+    console.log(`🔄 Aggiornamento campi aggiuntivi per ${plate}...`);
     
-    setLoading(true);
+    const updateData: any = {};
+    if (vehicle.brand_id) updateData.brand_id = vehicle.brand_id;
+    if (vehicle.model_id) updateData.model_id = vehicle.model_id;
+    if (vehicle.color_id) updateData.color_id = vehicle.color_id;
+    if (vehicle.category_id) updateData.category_id = vehicle.category_id;
+    updateData.updated_at = new Date().toISOString();
     
-    try {
-      const contractHTML = generateContractHTML();
-      
-      // Genera numero contratto
-      const now = new Date();
-      const contractNumber = `CONTR-${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}-${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}`;
+    const { error: updateError } = await supabase
+  .from('vehicle_profiles')
+  .update(updateData)
+  .eq('id', vehicleProfileId);
 
-      // ============================================
-      // GESTIONE VEICOLI MULTIPLI E TARIFFE (VERSIONE CORRETTA)
-      // ============================================
-      const vehicleIds: string[] = [];
-      const vehicleProfiles: any[] = [];
-
-      for (const vehicle of vehicles) {
-        if (!vehicle.plate) continue; // Salta veicoli senza targa
-        
-        const plate = vehicle.plate.toUpperCase().trim();
-        console.log(`🚗 Elaborazione veicolo: ${plate}`);
-        
-        try {
-          // 1️⃣ CERCA O CREA PROFILO VEICOLO
-          let vehicleProfileId = null;
-          
-          const { data: existingProfile } = await supabase
-            .from('vehicle_profiles')
-            .select('id, brand_id, model_id, color_id, category_id')
-            .eq('tenant_id', tenantId)
-            .eq('plate', plate)
-            .maybeSingle();
-
-          if (existingProfile) {
-            console.log(`✅ Veicolo esistente trovato con ID: ${existingProfile.id}`);
-            vehicleProfileId = existingProfile.id;
-            
-            // Aggiorna eventuali campi mancanti
-            const updates: any = {};
-            if (vehicle.brand_id && !existingProfile.brand_id) updates.brand_id = vehicle.brand_id;
-            if (vehicle.model_id && !existingProfile.model_id) updates.model_id = vehicle.model_id;
-            if (vehicle.color_id && !existingProfile.color_id) updates.color_id = vehicle.color_id;
-            if (vehicle.category_id && !existingProfile.category_id) updates.category_id = vehicle.category_id;
-            
-            if (Object.keys(updates).length > 0) {
-              // ⭐ AGGIUNGI updated_at ALL'AGGIORNAMENTO (vehicle_profiles HA questa colonna)
-              const { error: updateError } = await supabase
-                .from('vehicle_profiles')
-                .update({
-                  ...updates,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', vehicleProfileId);
-              
-              if (updateError) {
-                console.error(`❌ Errore aggiornamento veicolo ${plate}:`, updateError);
-              } else {
-                console.log(`✅ Veicolo ${plate} aggiornato con successo`);
-              }
-            }
-          } else {
-            console.log(`🆕 Creazione nuovo profilo veicolo per targa: ${plate}`);
-            
-            // ⭐ INSERIMENTO CON updated_at (vehicle_profiles HA questa colonna)
-            const { data: newProfile, error: profileError } = await supabase
-              .from('vehicle_profiles')
-              .insert({
-                tenant_id: tenantId,
-                plate: plate,
-                brand_id: vehicle.brand_id || null,
-                model_id: vehicle.model_id || null,
-                color_id: vehicle.color_id || null,
-                category_id: vehicle.category_id || null,
-                updated_at: new Date().toISOString()
-              })
-              .select()
-              .single();
-            
-            if (profileError) {
-              console.error(`❌ Errore inserimento veicolo ${plate}:`, profileError);
-              throw profileError;
-            }
-            
-            vehicleProfileId = newProfile.id;
-            console.log(`✅ Nuovo veicolo creato con ID: ${vehicleProfileId}`);
-          }
-
-          vehicleIds.push(vehicleProfileId);
-          vehicleProfiles.push({
-            ...vehicle,
-            profile_id: vehicleProfileId
-          });
-          
-        } catch (err) {
-          console.error(`❌ Errore nella gestione del veicolo ${plate}:`, err);
-          throw err;
-        }
-      }
-
-      console.log(`✅ Totale veicoli processati: ${vehicleIds.length}`);
-
-      // Creazione cliente
-      const { data: customer, error: customerError } = await supabase
-        .from('customers')
-        .insert({
-          tenant_id: tenantId,
-          type: 'private',
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          name: `${formData.first_name} ${formData.last_name}`.trim(),
-          fiscal_code: formData.fiscal_code || null,
-          birth_date: formData.birth_date || null,
-          birth_place: formData.birth_place || null,
-          address: formData.address || null,
-          city: formData.city || null,
-          postal_code: formData.postal_code || null,
-          province: formData.province || null,
-          email: formData.email || null,
-          phone: formData.phone || null,
-          document_type: formData.document_type || null,
-          document_number: formData.document_number || null,
-          document_issue_date: formData.document_issue_date || null,
-          document_expiry_date: formData.document_expiry_date || null,
-          document_issuing_authority: formData.document_issuing_authority || null,
-          notes: `Veicoli: ${vehicles.map(v => v.plate).filter(Boolean).join(', ') || 'N/D'}`,
-          is_active: true
-        })
-        .select()
-        .single();
-
-      if (customerError) {
-        console.error("❌ Errore creazione cliente:", customerError);
-        throw customerError;
-      }
-
-      // ⭐ ASSOCIAZIONE VEICOLI AL CLIENTE - SENZA updated_at (customer_vehicles NON ha questa colonna!)
-      for (let i = 0; i < vehicles.length; i++) {
-        const vehicle = vehicles[i];
-        if (!vehicle.plate) continue;
-        
-        const plate = vehicle.plate.toUpperCase().trim();
-        
-        // ⭐ ASSOCIAZIONE PULITA - SENZA updated_at
-        const { error: customerVehicleError } = await supabase
-          .from('customer_vehicles')
-          .insert({
-            tenant_id: tenantId,
-            customer_id: customer.id,
-            plate: plate,
-            is_active: true,
-            created_at: new Date().toISOString()
-            // ⭐ NESSUN UPDATED_AT - la tabella customer_vehicles NON ha questa colonna!
-          });
-
-        if (customerVehicleError) {
-          console.error(`❌ Errore associazione veicolo ${plate} al cliente:`, customerVehicleError);
-        } else {
-          console.log(`🔗 Veicolo ${plate} associato al cliente (tramite targa)`);
-        }
-
-        // Salva le tariffe per questo veicolo (solo se richiesto dal template)
-        if (templateConfig.show_vehicle_tariffs) {
-          const vehicleProfileId = vehicleIds[i];
-          
-          for (const tariff of vehicle.tariffs) {
-            if (!tariff.price) continue; // Salta tariffe senza prezzo
-            
-            const tariffData = {
-              tenant_id: tenantId,
-              vehicle_profile_id: vehicleProfileId,
-              type: tariff.type,
-              description: tariff.description || '',
-              price: parseFloat(tariff.price),
-              valid_from: tariff.valid_from || null,
-              valid_to: tariff.valid_to || null,
-              is_active: true
-            };
-
-            const { error: tariffError } = await supabase
-              .from('vehicle_tariffs')
-              .insert(tariffData);
-
-            if (tariffError) {
-              console.error(`❌ Errore salvataggio tariffa:`, tariffError);
-            } else {
-              console.log(`💰 Tariffa salvata: ${tariff.type} - €${tariff.price}`);
-            }
-          }
-        }
-      }
-
-      // Creazione contratto
-      const validFrom = new Date().toISOString().split('T')[0];
-      const validTo = formData.duration_months 
-        ? new Date(Date.now() + parseInt(formData.duration_months) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-        : null;
-
-      // Prendi il primo veicolo per i dati (se presente)
-      const primoVeicolo = vehicles.find(v => v.plate);
-
-      // Salva l'HTML generato nel contratto
-      const { data: newContract, error: contractError } = await supabase
-        .from("contracts")
-        .insert({
-          tenant_id: tenantId,
-          contract_number: contractNumber,
-          customer_id: customer.id,
-          template_id: selectedTemplate.id,
-          signed_at: new Date().toISOString(),
-          valid_from: validFrom,
-          valid_to: validTo,
-          duration_months: formData.duration_months ? parseInt(formData.duration_months) : null,
-          price: formData.price ? parseFloat(formData.price) : null,
-          notes: formData.notes || null,
-          generated_html: contractHTML,
-          generated_pdf_url: `contratto-${contractNumber}.pdf`,
-          
-          // NUOVI CAMPI PER IL VEICOLO
-          vehicle_plate: primoVeicolo?.plate || null,
-          vehicle_brand: primoVeicolo?.make || null,
-          vehicle_model: primoVeicolo?.model || null,
-          vehicle_color: primoVeicolo?.color || null,
-          vehicle_category_id: primoVeicolo?.category_id || null
-        })
-        .select()
-        .single();
-
-      if (contractError) {
-        console.error("❌ Errore creazione contratto:", contractError);
-        throw contractError;
-      }
-
-      console.log("✅ Contratto salvato con HTML di lunghezza:", contractHTML.length);
-      console.log("✅ Dati veicolo salvati:", {
-        plate: primoVeicolo?.plate,
-        brand: primoVeicolo?.make,
-        model: primoVeicolo?.model,
-        color: primoVeicolo?.color,
-        category_id: primoVeicolo?.category_id
+if (updateError && updateError.code !== '409') {  // Ignora errore 409 (conflict)
+  console.error(`❌ Errore aggiornamento campi veicolo ${plate}:`, updateError);
+} else if (updateError && updateError.code === '409') {
+  console.log(`⚠️ Aggiornamento saltato (già eseguito dal trigger) per ${plate}`);
+} else {
+  console.log(`✅ Campi aggiuntivi aggiornati per ${plate}`);
+}
+  }   
+ }
+ 
+ // 2b. ASSOCIA IL VEICOLO AL CLIENTE (tabella customer_vehicles)
+    const { error: customerVehicleError } = await supabase
+      .from('customer_vehicles')
+      .insert({
+        tenant_id: tenantId,
+        customer_id: customer.id,
+        plate: plate,
+        brand: vehicle.make || null,
+        model: vehicle.model || null,
+        color: vehicle.color || null,
+        category_id: vehicle.category_id || null,
+        is_active: true,
+        created_at: new Date().toISOString()
       });
 
-      // ⭐ CREAZIONE SUBSCRIPTION PER ABBONAMENTI
-      let newSubscription = null;
-      if (selectedType === 'subscription') {
-        console.log("📅 Creazione subscription per abbonamento...");
-        
-        const { data, error: subscriptionError } = await supabase
-          .from("subscriptions")
-          .insert({
-            tenant_id: tenantId,
-            customer_id: customer.id,
-            contract_id: newContract.id,
-            subscription_type: formData.duration_months && parseInt(formData.duration_months) >= 12 ? 'annual' : 'monthly',
-            start_date: validFrom,
-            end_date: validTo,
-            price: formData.price ? parseFloat(formData.price) : null,
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (subscriptionError) {
-          console.error("❌ Errore creazione subscription:", subscriptionError);
-        } else {
-          console.log("✅ Subscription creata con ID:", data.id);
-          newSubscription = data;
-        }
-      }
-
-      // ⭐ CREAZIONE FEDELTÀ PER CONTRATTI FEDELTÀ LAVAGGIO
-      let newFidelity = null;
-      if (selectedType === 'wash_fidelity') {
-        console.log("🎁 Creazione programma fedeltà...");
-        
-        try {
-          // Trova un programma fedeltà attivo
-          const { data: program } = await supabase
-            .from('fidelity_programs')
-            .select('id')
-            .eq('tenant_id', tenantId)
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-          
-          // Inserisci in customer_fidelity
-          const fidelityData = {
-            tenant_id: tenantId,
-            customer_id: customer.id,
-            fidelity_program_id: program?.id || null,
-            current_count: 0,
-            reward_available: false,
-            updated_at: new Date().toISOString()
-          };
-          
-          console.log("📦 Dati fedeltà da inserire:", fidelityData);
-          
-          const { data, error: fidelityError } = await supabase
-            .from("customer_fidelity")
-            .insert(fidelityData)
-            .select()
-            .single();
-
-          if (fidelityError) {
-            console.error("❌ Errore creazione fedeltà:", fidelityError);
-          } else {
-            console.log("✅ Fedeltà creata con ID:", data.id);
-            newFidelity = data;
-            
-            // Se ci sono più veicoli, associali anche a vehicle_fidelity
-            for (let i = 0; i < vehicles.length; i++) {
-              const vehicle = vehicles[i];
-              if (!vehicle.plate) continue;
-              
-              const vehicleProfileId = vehicleIds[i];
-              
-              await supabase
-                .from('vehicle_fidelity')
-                .insert({
-                  tenant_id: tenantId,
-                  vehicle_id: vehicleProfileId,
-                  fidelity_id: data.id,
-                  created_at: new Date().toISOString()
-                })
-                .select()
-                .single();
-              
-              console.log(`🎁 Veicolo ${vehicle.plate} associato al programma fedeltà`);
-            }
-          }
-        } catch (err) {
-          console.error("❌ Eccezione creazione fedeltà:", err);
-        }
-      }
-
-      // ⭐ COLLEGA I VEICOLI AL CONTRATTO
-      for (let i = 0; i < vehicles.length; i++) {
-        const vehicle = vehicles[i];
-        if (!vehicle.plate) continue;
-        
-        const vehicleProfileId = vehicleIds[i];
-        
-        await supabase
-          .from('contract_vehicles')
-          .insert({
-            contract_id: newContract.id,
-            vehicle_id: vehicleProfileId,
-            subscription_id: newSubscription?.id || null,
-            fidelity_id: newFidelity?.id || null,
-            created_at: new Date().toISOString()
-          });
-
-        console.log(`🔗 Veicolo ${vehicle.plate} collegato al contratto (ID profilo: ${vehicleProfileId})`);
-      }
-
-      setGeneratedContract(newContract);
-      
-      // Generazione PDF
-      const pdfBlob = await generatePDFFromHTML(contractHTML, `contratto-${contractNumber}.pdf`);
-      
-      if (formData.send_email && formData.email) {
-        await sendContractEmail(
-          formData.email,
-          contractNumber,
-          pdfBlob,
-          `${formData.first_name} ${formData.last_name}`
-        );
-      }
-      
-      if (formData.print_copy) {
-        printHTML(contractHTML);
-      }
-      
-      setStep(4);
-      
-    } catch (err) {
-      console.error("❌ Errore generazione contratto:", err);
-      alert("Errore durante la generazione del contratto");
-    } finally {
-      setLoading(false);
+    if (customerVehicleError) {
+      console.error(`❌ Errore associazione veicolo ${plate} al cliente:`, customerVehicleError);
+    } else {
+      console.log(`🔗 Veicolo ${plate} associato al cliente`);
     }
-  };
+    
+  } catch (err) {
+    console.error(`❌ Errore salvataggio veicolo ${plate}:`, err);
+  }
+}
 
-  // Handle stampa
+console.log(`✅ Totale veicoli salvati: ${vehicleIds.length}`);
+
+    // 3. CREA CONTRATTO
+    const validFrom = new Date().toISOString().split('T')[0];
+    const validTo = formData.duration_months 
+      ? new Date(Date.now() + parseInt(formData.duration_months) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      : null;
+
+    // 🔥 Calcola il prezzo totale dal canone mensile dei veicoli
+    let totalMonthlyPrice = 0;
+    for (const vehicle of vehicles) {
+      if (vehicle.monthly_price && vehicle.monthly_price !== "") {
+        totalMonthlyPrice += parseFloat(vehicle.monthly_price);
+      }
+    }
+    // Se non ci sono prezzi per veicolo, usa il prezzo del contratto
+    const finalPrice = totalMonthlyPrice > 0 ? totalMonthlyPrice : (formData.price ? parseFloat(formData.price) : null);
+    
+    console.log(`💰 Prezzo calcolato: ${finalPrice} (da veicoli: ${totalMonthlyPrice})`);
+
+    const { data: newContract, error: contractError } = await supabase
+      .from("contracts")
+      .insert({
+        tenant_id: tenantId,
+        contract_number: contractNumber,
+        customer_id: customer.id,
+        template_id: selectedTemplate.id,
+        signed_at: new Date().toISOString(),
+        valid_from: validFrom,
+        valid_to: validTo,
+        duration_months: formData.duration_months ? parseInt(formData.duration_months) : null,
+        price: finalPrice,
+        notes: formData.notes || null,
+        generated_html: contractHTML,
+      })
+      .select()
+      .single();
+
+    if (contractError) throw contractError;
+    console.log("✅ Contratto creato:", newContract.id);
+
+    // 4. 🔥 COLLEGA I VEICOLI AL CONTRATTO
+for (const vehicleProfileId of vehicleIds) {
+  const { error: contractVehicleError } = await supabase
+    .from('contract_vehicles')
+    .insert({
+      contract_id: newContract.id,
+      vehicle_id: vehicleProfileId,
+      subscription_id: null,  // sarà aggiornato dopo la creazione della subscription
+      fidelity_id: null,
+      created_at: new Date().toISOString()
+    });
+  
+  if (contractVehicleError) {
+    console.error(`❌ Errore collegamento veicolo ${vehicleProfileId} al contratto:`, contractVehicleError);
+  } else {
+    console.log(`🔗 Veicolo ${vehicleProfileId} collegato al contratto`);
+  }
+}
+
+    // 5. 🔥 CREA SUBSCRIPTION PER ABBONAMENTO
+    if (selectedType === 'subscription' && finalPrice > 0) {
+      console.log("📅 Creazione subscription per abbonamento...");
+      
+      const { error: subscriptionError } = await supabase
+        .from("subscriptions")
+        .insert({
+          tenant_id: tenantId,
+          customer_id: customer.id,
+          contract_id: newContract.id,
+          subscription_type: formData.duration_months && parseInt(formData.duration_months) >= 12 ? 'annual' : 'monthly',
+          start_date: validFrom,
+          end_date: validTo,
+          price: finalPrice,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+      if (subscriptionError) {
+        console.error("❌ Errore creazione subscription:", subscriptionError);
+      } else {
+        console.log("✅ Subscription creata con prezzo:", finalPrice);
+      }
+    }
+
+    setGeneratedContract(newContract);
+    
+    // 6. GENERA PDF
+    const pdfBlob = await generatePDFFromHTML(contractHTML, `contratto-${contractNumber}.pdf`);
+    
+    if (formData.send_email && formData.email) {
+      await sendContractEmail(
+        formData.email,
+        contractNumber,
+        pdfBlob,
+        `${formData.first_name} ${formData.last_name}`
+      );
+    }
+    
+    if (formData.print_copy) {
+      printHTML(contractHTML);
+    }
+    
+    setStep(4);
+    
+  } catch (err) {
+    console.error("❌ Errore generazione contratto:", err);
+    alert("Errore durante la generazione del contratto: " + (err as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
+
   const handlePrint = () => {
     if (!selectedTemplate || !companyInfo) return;
     printHTML(generateContractHTML());
   };
 
-  // Handle download PDF
   const handleDownloadPDF = async () => {
     if (!selectedTemplate || !companyInfo) return;
     
@@ -750,7 +618,7 @@ export default function OperatorContracts() {
     }
   };
 
-  // Render step 1
+  // 🔥 RENDER STEP 1
   const renderStep1 = () => (
     <div>
       <h2 style={{ marginBottom: "20px", color: BLUE }}>Seleziona il tipo di contratto</h2>
@@ -768,8 +636,10 @@ export default function OperatorContracts() {
               transition: "transform 0.2s, box-shadow 0.2s",
               textAlign: "center"
             }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-5px)"}
+            onMouseLeave={(e) => e.currentTarget.style.transform = "translateY(0)"}
           >
-            <div style={{ color: type.colore, marginBottom: "15px" }}>{type.icon}</div>
+            <div style={{ color: type.colore, marginBottom: "15px", fontSize: "40px" }}>{type.icon}</div>
             <h3 style={{ color: "#fff", marginBottom: "10px" }}>{type.nome}</h3>
             <p style={{ color: "#9ca3af", fontSize: "13px" }}>{type.descrizione}</p>
           </div>
@@ -778,18 +648,19 @@ export default function OperatorContracts() {
     </div>
   );
 
-  // Render step 2
+  // 🔥 RENDER STEP 2
   const renderStep2 = () => (
     <div>
       <h2 style={{ marginBottom: "20px", color: BLUE }}>Scegli il modello di contratto</h2>
       
       {templatesLoading ? (
         <div style={{ textAlign: "center", padding: "40px", color: "#9ca3af" }}>
-          Caricamento modelli...
+          <div>Caricamento modelli...</div>
         </div>
       ) : templates.length === 0 ? (
         <div style={{ background: BG_DARK, padding: "40px", borderRadius: "12px", textAlign: "center", color: "#9ca3af" }}>
-          Nessun modello attivo per questo tipo di contratto.
+          <p>Nessun modello attivo per questo tipo di contratto.</p>
+          <p style={{ fontSize: "12px", marginTop: "10px" }}>Contatta l'amministratore per creare un modello di contratto.</p>
         </div>
       ) : (
         <div style={{ display: "grid", gap: "15px" }}>
@@ -805,22 +676,20 @@ export default function OperatorContracts() {
                 cursor: "pointer",
                 transition: "all 0.2s"
               }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = BLUE}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = "#333"}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <h3 style={{ color: "#fff", marginBottom: "5px" }}>{template.name}</h3>
-                  <p style={{ color: "#9ca3af", fontSize: "13px" }}>{template.title}</p>
+                  <p style={{ color: "#9ca3af", fontSize: "13px" }}>{template.title || "Contratto"}</p>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   {template.default_duration_months && (
-                    <div style={{ color: BLUE, fontSize: "14px" }}>
-                      📅 {template.default_duration_months} mesi
-                    </div>
+                    <div style={{ color: BLUE, fontSize: "14px" }}>📅 {template.default_duration_months} mesi</div>
                   )}
                   {template.default_price && (
-                    <div style={{ color: BLUE, fontSize: "14px" }}>
-                      💰 € {template.default_price}
-                    </div>
+                    <div style={{ color: BLUE, fontSize: "14px" }}>💰 € {template.default_price}</div>
                   )}
                 </div>
               </div>
@@ -831,82 +700,91 @@ export default function OperatorContracts() {
     </div>
   );
 
-  // Render step 3
-  const renderStep3 = () => (
-    <div>
-      <h2 style={{ marginBottom: "20px", color: BLUE }}>Dati del contratto</h2>
-      
-      <div style={{ display: "flex", gap: "5px", marginBottom: "20px", borderBottom: "1px solid #333", flexWrap: "wrap" }}>
-        {availableTabs.map(tab => (
-          <TabButton 
-            key={tab.id}
-            label={tab.label} 
-            active={activeTab === tab.id} 
-            onClick={() => setActiveTab(tab.id)} 
-          />
-        ))}
-      </div>
-      
-      <div style={{ background: BG_DARK, padding: "20px", borderRadius: "10px" }}>
-        {activeTab === 'anagrafica' && (
-          <AnagraficaTab 
-            formData={formData} 
-            onInputChange={handleInputChange}
-            requiredFields={templateConfig.required_fields?.customer || []}
-            showAllFields={templateConfig.type === 'subscription'}
-          />
-        )}
-        {activeTab === 'residenza' && (
-          <ResidenzaTab 
-            formData={formData} 
-            onInputChange={handleInputChange}
-            requiredFields={templateConfig.required_fields?.customer || []}
-          />
-        )}
-        {activeTab === 'documento' && (
-          <DocumentoTab 
-            formData={formData} 
-            onInputChange={handleInputChange}
-            showAllFields={templateConfig.type === 'subscription'}
-          />
-        )}
-        {activeTab === 'veicolo' && (
-          <VeicoliTab 
-            formData={formData} 
-            onInputChange={handleInputChange}
-            vehicles={vehicles}
-            selectedVehicle={selectedVehicle}
-            onSelectVehicle={setSelectedVehicle}
-            onAddVehicle={addVehicle}
-            onRemoveVehicle={removeVehicle}
-            onUpdateVehicle={updateVehicle}
-            onAddTariff={addTariff}
-            onRemoveTariff={removeTariff}
-            onUpdateTariff={updateTariff}
-            brands={brands}
-            models={models}
-            loadingBrands={loadingBrands}
-            loadingModels={loadingModels}
-            showTariffs={templateConfig.show_vehicle_tariffs}
-            tenantId={tenantId}
-            contractType={selectedType}
-          />
-        )}
-        {activeTab === 'contratto' && (
-          <ContrattoTab 
-            formData={formData} 
-            onInputChange={handleInputChange}
-            defaultDuration={selectedTemplate?.default_duration_months?.toString()}
-            defaultPrice={selectedTemplate?.default_price?.toString()}
-            showDuration={templateConfig.show_contract_duration}
-            showPrice={templateConfig.show_contract_price}
-          />
-        )}
-      </div>
-    </div>
-  );
+  // 🔥 RENDER STEP 3 - CON CORREZIONI PER RESIDENZA E DOCUMENTO
+  const renderStep3 = () => {
+    if (availableTabs.length === 0) {
+      return (
+        <div style={{ textAlign: "center", padding: "40px", color: "#f59e0b" }}>
+          <h3>⚠️ Configurazione contratto incompleta</h3>
+          <p>Il modello di contratto selezionato non ha una configurazione valida.</p>
+          <button onClick={() => setStep(2)} style={{ marginTop: "20px", padding: "10px 20px", background: BLUE, border: "none", borderRadius: "6px", color: "#fff", cursor: "pointer" }}>
+            Torna ai modelli
+          </button>
+        </div>
+      );
+    }
 
-  // Render step 4
+    return (
+      <div>
+        <h2 style={{ marginBottom: "20px", color: BLUE }}>Dati del contratto</h2>
+        
+        <div style={{ display: "flex", gap: "5px", marginBottom: "20px", borderBottom: "1px solid #333", flexWrap: "wrap" }}>
+          {availableTabs.map(tab => (
+            <TabButton key={tab.id} label={tab.label} active={activeTab === tab.id} onClick={() => setActiveTab(tab.id)} />
+          ))}
+        </div>
+        
+        <div style={{ background: BG_DARK, padding: "20px", borderRadius: "10px" }}>
+          {activeTab === 'anagrafica' && (
+            <AnagraficaTab 
+              formData={formData} 
+              onInputChange={handleInputChange}
+              requiredFields={safeRequiredFields.customer || []}
+              showAllFields={selectedType === 'subscription'}
+            />
+          )}
+          {activeTab === 'residenza' && (
+            <ResidenzaTab 
+              formData={formData} 
+              onInputChange={handleInputChange}
+              requiredFields={['address', 'city', 'postal_code', 'province']}  // 🔥 FORZA I CAMPI RESIDENZA
+            />
+          )}
+          {activeTab === 'documento' && (
+            <DocumentoTab 
+              formData={formData} 
+              onInputChange={handleInputChange}
+              showAllFields={true}  // 🔥 FORZA VISUALIZZAZIONE DOCUMENTO
+            />
+          )}
+          {activeTab === 'veicolo' && (
+            <VeicoliTab 
+              formData={formData} 
+              onInputChange={handleInputChange}
+              vehicles={vehicles}
+              selectedVehicle={selectedVehicle}
+              onSelectVehicle={setSelectedVehicle}
+              onAddVehicle={addVehicle}
+              onRemoveVehicle={removeVehicle}
+              onUpdateVehicle={updateVehicle}
+              onAddTariff={addTariff}
+              onRemoveTariff={removeTariff}
+              onUpdateTariff={updateTariff}
+              brands={brands}
+              models={models}
+              loadingBrands={loadingBrands}
+              loadingModels={loadingModels}
+              showTariffs={templateConfig?.show_vehicle_tariffs || false}
+              tenantId={tenantId}
+              contractType={selectedType}
+            />
+          )}
+          {activeTab === 'contratto' && (
+            <ContrattoTab 
+              formData={formData} 
+              onInputChange={handleInputChange}
+              defaultDuration={selectedTemplate?.default_duration_months?.toString()}
+              defaultPrice={selectedTemplate?.default_price?.toString()}
+              showDuration={templateConfig?.show_contract_duration || false}
+              showPrice={templateConfig?.show_contract_price || false}
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // 🔥 RENDER STEP 4
   const renderStep4 = () => (
     <div>
       <div style={{ background: "#10b981", color: "#fff", padding: "20px", borderRadius: "10px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "15px" }}>
@@ -920,36 +798,24 @@ export default function OperatorContracts() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
         <div style={{ background: BG_DARK, padding: "20px", borderRadius: "10px" }}>
           <h4 style={{ color: "#fff", marginBottom: "10px" }}>Riepilogo</h4>
-          <p style={{ color: "#9ca3af", marginBottom: "5px" }}>
-            <strong>Cliente:</strong> {formData.first_name} {formData.last_name}
-          </p>
-          <p style={{ color: "#9ca3af", marginBottom: "5px" }}>
-            <strong>Veicoli:</strong> {vehicles.filter(v => v.plate).map(v => v.plate).join(', ') || 'Nessuno'}
-          </p>
-          <p style={{ color: "#9ca3af", marginBottom: "5px" }}>
-            <strong>Durata:</strong> {formData.duration_months || 0} mesi
-          </p>
-          <p style={{ color: "#9ca3af" }}>
-            <strong>Importo:</strong> € {formData.price || 0}
-          </p>
+          <p style={{ color: "#9ca3af", marginBottom: "5px" }}><strong>Cliente:</strong> {formData.first_name} {formData.last_name}</p>
+          <p style={{ color: "#9ca3af", marginBottom: "5px" }}><strong>Veicoli:</strong> {vehicles.filter(v => v.plate).map(v => v.plate).join(', ') || 'Nessuno'}</p>
+          <p style={{ color: "#9ca3af", marginBottom: "5px" }}><strong>Durata:</strong> {formData.duration_months || 0} mesi</p>
+          <p style={{ color: "#9ca3af" }}><strong>Importo:</strong> € {formData.price || 0}</p>
         </div>
         
         <div style={{ background: BG_DARK, padding: "20px", borderRadius: "10px" }}>
           <h4 style={{ color: "#fff", marginBottom: "10px" }}>Azioni</h4>
-          
           <button onClick={() => setShowPreview(!showPreview)} style={{ width: "100%", padding: "12px", marginBottom: "10px", background: "transparent", border: `1px solid ${BLUE}`, color: BLUE, borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>
             {showPreview ? "Nascondi anteprima" : "Mostra anteprima"}
           </button>
-          
           <button onClick={handlePrint} style={{ width: "100%", padding: "12px", marginBottom: "10px", background: BLUE, border: "none", color: "#fff", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>
             Stampa contratto
           </button>
-          
           <button onClick={handleDownloadPDF} disabled={pdfGenerating} style={{ width: "100%", padding: "12px", marginBottom: "10px", background: "#10b981", border: "none", color: "#fff", borderRadius: "6px", cursor: pdfGenerating ? "not-allowed" : "pointer", fontWeight: "bold", opacity: pdfGenerating ? 0.5 : 1 }}>
             {pdfGenerating ? "Generazione PDF..." : "Scarica PDF"}
           </button>
-          
-          <button onClick={() => navigate(-1)} style={{ width: "100%", padding: "12px", background: "transparent", border: "1px solid #333", color: "#fff", borderRadius: "6px", cursor: "pointer" }}>
+          <button onClick={() => navigate("/dashboard")} style={{ width: "100%", padding: "12px", background: "transparent", border: "1px solid #333", color: "#fff", borderRadius: "6px", cursor: "pointer" }}>
             Torna alla dashboard
           </button>
         </div>
