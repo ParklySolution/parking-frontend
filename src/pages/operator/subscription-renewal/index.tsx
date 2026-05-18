@@ -18,6 +18,7 @@ import { sendContractEmail } from '@/services/emailService';
 import { formatDate, formatCurrency } from '@/pages/operator/Contracts/utils/formatters';
 import { useCustomerSubscription } from './hooks/useCustomerSubscription';
 import { MonthSelector } from './components/MonthSelector';
+import { useCompanyInfo } from '@/pages/operator/Contracts/hooks/useCompanyInfo';
 
 // Colori
 const BLUE = "#4f8cff";
@@ -41,6 +42,9 @@ export default function SubscriptionRenewal() {
   
   // ⭐ State per gli insoluti
   const [includeOutstandings, setIncludeOutstandings] = useState(false);
+
+  // ⭐ Hook per i dati azienda
+  const { companyInfo } = useCompanyInfo(tenantId);
 
   const { searchCustomer, loading } = useCustomerSubscription();
 
@@ -82,7 +86,7 @@ export default function SubscriptionRenewal() {
     setShowResults(false);
     setSelectedMonths([]);
     setTotalAmount(0);
-    setIncludeOutstandings(false); // Reset insoluti quando cambio cliente
+    setIncludeOutstandings(false);
   };
 
   const handleMonthSelection = (months: any[], total: number) => {
@@ -90,128 +94,31 @@ export default function SubscriptionRenewal() {
     setTotalAmount(total);
   };
 
-  const handlePayment = async () => {
-    if (!selectedCustomer || selectedMonths.length === 0 || !paymentMethod) {
-      alert('Seleziona almeno un mese e un metodo di pagamento');
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      // ⭐ USA LA SUBSCRIPTION INVECE DEL CONTRATTO
-      const subscription = selectedCustomer.subscriptions?.[0];
-      
-      if (!subscription) {
-        throw new Error('Nessuna subscription attiva trovata per questo cliente. Assicurati che il contratto sia di tipo abbonamento.');
-      }
-
-      const firstMonth = selectedMonths[0];
-      const lastMonth = selectedMonths[selectedMonths.length - 1];
-      
-      // Ottieni l'ID dell'utente loggato
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('Utente non autenticato');
-      }
-      
-      // Trova ID metodo pagamento
-      const { data: method, error: methodError } = await supabase
-        .from('payment_methods')
-        .select('id')
-        .eq('code', paymentMethod)
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-      
-      if (methodError || !method) {
-        throw new Error(`Metodo di pagamento ${paymentMethod} non configurato. Vai in Gestione > Metodi Pagamento per configurarlo.`);
-      }
-
-      // Prepara i dati con tutti i campi obbligatori
-      const paymentData = {
-        tenant_id: tenantId,
-        subscription_id: subscription.id,
-        period_from: firstMonth.periodStart || firstMonth.period_from,
-        period_to: lastMonth.periodEnd || lastMonth.period_to,
-        amount: finalTotal, // ⭐ Usa finalTotal invece di totalAmount
-        payment_method_id: method.id,
-        created_by: user.id,
-        payment_date: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      };
-
-      console.log('📦 Invio dati pagamento:', paymentData);
-
-      // Inserisci pagamento
-      const { data: payment, error: paymentError } = await supabase
-        .from('subscription_payments')
-        .insert(paymentData)
-        .select()
-        .single();
-
-      if (paymentError) throw paymentError;
-
-      // ⭐ 3️⃣ Chiudi gli insoluti se selezionati
-      if (includeOutstandings && selectedCustomer.outstandings?.items?.length > 0) {
-  const outstandingIds = selectedCustomer.outstandings.items.map(o => String(o.id));
-
-const { error: closeError } = await supabase
-  .from("outstanding_payments")
-  .update({
-    status: "paid",
-    closed_at: new Date().toISOString(),
-    closed_by_payment_id: payment.id
-  })
-  .in("id", outstandingIds);
-
-  if (closeError) {
-    console.error("❌ Errore chiusura insoluti:", closeError);
-  } else {
-    console.log("🔒 Insoluti chiusi correttamente:", outstandingIds);
-  }
-}
-
-      // Trova il metodo di pagamento per il nome
-      const selectedMethod = paymentMethods.find(m => m.code === paymentMethod);
-
-      // Genera ricevuta con insoluti
-      const receiptHTML = generateReceiptHTML(payment, selectedCustomer, selectedMonths, selectedMethod, includeOutstandings);
-      const pdfBlob = await generatePDFFromHTML(receiptHTML, `ricevuta-${Date.now()}.pdf`);
-
-      // Stampa se richiesto
-      if (shouldPrint) {
-        printHTML(receiptHTML);
-      }
-
-      // Email se richiesto
-      if (shouldEmail && selectedCustomer.email) {
-        await sendContractEmail(
-          selectedCustomer.email,
-          `RICEVUTA-${payment.id.substring(0, 8)}`,
-          pdfBlob,
-          `${selectedCustomer.first_name} ${selectedCustomer.last_name}`
-        );
-      }
-
-      alert('✅ Pagamento registrato con successo!');
-
-      // ⭐ TORNA ALLA DASHBOARD DOPO 2 SECONDI
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
-
-    } catch (error) {
-      console.error('❌ Errore pagamento:', error);
-      alert(error.message || 'Errore durante la registrazione del pagamento');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
+  // 🔥 FUNZIONE GENERAZIONE RICEVUTA COMPLETAMENTE AGGIORNATA
   const generateReceiptHTML = (payment: any, customer: any, months: any[], method: any, includeOutstandings: boolean) => {
+    
+    // 🔥 LOG PER DEBUG
+  console.log("===== DEBUG RICEVUTA =====");
+  console.log("customer.customer_vehicles:", customer.customer_vehicles);
+  console.log("customer.customer_vehicles JSON:", JSON.stringify(customer.customer_vehicles, null, 2));
+  console.log("Primo veicolo:", customer.customer_vehicles?.[0]);
+  console.log("Marca primo veicolo:", customer.customer_vehicles?.[0]?.brand);
+  console.log("Modello primo veicolo:", customer.customer_vehicles?.[0]?.model);
+
+    // Dati azienda
+    const companyName = companyInfo?.company_name || 'Prova Parking';
+    const companyAddress = companyInfo?.legal_address || '';
+    const companyVat = companyInfo?.vat_number || '';
+    const companyPhone = companyInfo?.phone || '';
+    const companyEmail = companyInfo?.email || '';
+    const companyWebsite = companyInfo?.website || 'www.park-ly.it';
+
     const firstMonth = months[0];
     const lastMonth = months[months.length - 1];
     const outstandingsTotal = includeOutstandings && customer.outstandings ? customer.outstandings.total : 0;
     const grandTotal = payment.amount;
+
+    console.log("🚗 VEICOLI ricevuti in ricevuta:", customer.customer_vehicles);
 
     return `
       <!DOCTYPE html>
@@ -227,26 +134,37 @@ const { error: closeError } = await supabase
             padding: 5mm;
             font-size: 10pt;
             line-height: 1.2;
+            background: white;
           }
           h1 {
             text-align: center;
             font-size: 14pt;
             font-weight: bold;
             margin: 2mm 0;
-            color: #000;
+            color: #4f8cff;
           }
           h2 {
             text-align: center;
             font-size: 12pt;
             font-weight: bold;
             margin: 2mm 0;
-            color: #000;
+            color: #333;
           }
           .header {
             text-align: center;
             border-bottom: 1px dashed #000;
             padding-bottom: 2mm;
             margin-bottom: 3mm;
+          }
+          .company-name {
+            font-size: 16pt;
+            font-weight: bold;
+            color: #4f8cff;
+            margin-bottom: 2mm;
+          }
+          .company-address {
+            font-size: 9pt;
+            color: #555;
           }
           .section {
             margin: 3mm 0;
@@ -257,8 +175,9 @@ const { error: closeError } = await supabase
             font-weight: bold;
             font-size: 11pt;
             margin-bottom: 2mm;
-            background: #eee;
-            padding: 1mm;
+            background: #f0f0f0;
+            padding: 2mm;
+            border-radius: 4px;
           }
           .row {
             display: flex;
@@ -269,9 +188,16 @@ const { error: closeError } = await supabase
             font-weight: bold;
           }
           .vehicle {
-            border: 1px solid #000;
+            border: 1px solid #4f8cff;
             padding: 2mm;
             margin: 2mm 0;
+            border-radius: 4px;
+            background: #f8f9ff;
+          }
+          .vehicle-plate {
+            font-weight: bold;
+            color: #4f8cff;
+            font-size: 11pt;
           }
           .total {
             font-size: 12pt;
@@ -283,6 +209,8 @@ const { error: closeError } = await supabase
             text-align: center;
             margin-top: 5mm;
             font-size: 9pt;
+            border-top: 1px solid #ddd;
+            padding-top: 3mm;
           }
           table {
             width: 100%;
@@ -301,16 +229,27 @@ const { error: closeError } = await supabase
             margin-top: 5px;
             padding-top: 5px;
           }
+          .payment-method {
+            display: inline-block;
+            padding: 2mm 4mm;
+            background: #4f8cff20;
+            border-radius: 4px;
+          }
         </style>
       </head>
       <body>
+        <!-- INTESTAZIONE CON DATI AZIENDA -->
         <div class="header">
-          <h1>PARK-LY</h1>
+          <div class="company-name">${companyName}</div>
+          <div class="company-address">${companyAddress}</div>
+          <div class="company-address">P.IVA ${companyVat} | Tel: ${companyPhone}</div>
+          <div class="company-address">Email: ${companyEmail} | Web: ${companyWebsite}</div>
+          <hr style="margin: 3mm 0;">
           <h2>RICEVUTA DI PAGAMENTO</h2>
           <div>Abbonamento Parcheggio</div>
-          <hr>
         </div>
 
+        <!-- DATI CLIENTE -->
         <div class="section">
           <div class="section-title">📋 DATI CLIENTE</div>
           <div class="row">
@@ -322,19 +261,36 @@ const { error: closeError } = await supabase
           ${customer.fiscal_code ? `<div class="row"><span class="label">CF:</span> <span>${customer.fiscal_code}</span></div>` : ''}
         </div>
 
-        <div class="section">
-          <div class="section-title">🚗 VEICOLI ABBONATI</div>
-          ${customer.customer_vehicles && customer.customer_vehicles.length > 0 ? 
-            customer.customer_vehicles.map((v: any) => `
-              <div class="vehicle">
-                <div class="row"><span class="label">Targa:</span> <span><strong>${v.plate}</strong></span></div>
-                <div class="row"><span class="label">Marca/Modello:</span> <span>${v.make} ${v.model}</span></div>
-              </div>
-            `).join('') 
-            : '<div>Nessun veicolo registrato</div>'
-          }
+        <!-- VEICOLI ABBONATI -->
+<div class="section">
+  <div class="section-title">🚗 VEICOLI ABBONATI</div>
+  ${customer.customer_vehicles && customer.customer_vehicles.length > 0 ? 
+    customer.customer_vehicles.map((v: any) => `
+      <div class="vehicle">
+        <div class="row">
+          <span class="label">Targa:</span>
+          <span class="vehicle-plate"><strong>${v.plate}</strong></span>
         </div>
+        <div class="row">
+          <span class="label">Marca:</span>
+          <span>${v.brand || 'N/D'}</span>
+        </div>
+        <div class="row">
+          <span class="label">Modello:</span>
+          <span>${v.model || 'N/D'}</span>
+        </div>
+        ${v.color ? `<div class="row"><span class="label">Colore:</span> <span>${v.color}</span></div>` : ''}
+        <div class="row" style="margin-top: 5px; border-top: 1px dashed #4f8cff; padding-top: 5px;">
+          <span class="label">💰 Canone mensile:</span>
+          <span style="color: #10b981; font-weight: bold;">€ ${(v.monthly_price || 0).toFixed(2)}</span>
+        </div>
+      </div>
+    `).join('') 
+    : '<div style="text-align:center; padding:4mm;">⚠️ Nessun veicolo registrato</div>'
+  }
+</div>
 
+        <!-- DETTAGLIO PAGAMENTO -->
         <div class="section">
           <div class="section-title">💰 DETTAGLIO PAGAMENTO</div>
           <div class="row">
@@ -355,10 +311,11 @@ const { error: closeError } = await supabase
           </div>
           <div class="row">
             <span class="label">Metodo:</span>
-            <span>${method?.name || paymentMethod}</span>
+            <span class="payment-method">${method?.name || 'N/D'}</span>
           </div>
         </div>
 
+        <!-- MESI PAGATI -->
         <div class="section">
           <div class="section-title">📅 MESI PAGATI</div>
           <table>
@@ -377,13 +334,15 @@ const { error: closeError } = await supabase
             <tr><td colspan="2"><hr></td></tr>
             <tr style="font-weight: bold; font-size: 12pt;">
               <td>TOTALE</td>
-              <td style="text-align: right;">€ ${grandTotal.toFixed(2)}</td>
+              <td style="text-align: right; color: #4f8cff;">€ ${grandTotal.toFixed(2)}</td>
             </tr>
           </table>
         </div>
 
+        <!-- PIÈ DI PAGINA -->
         <div class="footer">
           <p>Grazie per il pagamento!</p>
+          <p><strong>${companyName}</strong> - ${companyWebsite}</p>
           <p>${new Date().toLocaleString('it-IT')}</p>
           <p>_________________________</p>
           <p>Firma del cliente</p>
@@ -393,7 +352,110 @@ const { error: closeError } = await supabase
     `;
   };
 
-  // Funzione per ottenere l'icona giusta in base al metodo
+  const handlePayment = async () => {
+    if (!selectedCustomer || selectedMonths.length === 0 || !paymentMethod) {
+      alert('Seleziona almeno un mese e un metodo di pagamento');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const subscription = selectedCustomer.subscriptions?.[0];
+      
+      if (!subscription) {
+        throw new Error('Nessuna subscription attiva trovata per questo cliente. Assicurati che il contratto sia di tipo abbonamento.');
+      }
+
+      const firstMonth = selectedMonths[0];
+      const lastMonth = selectedMonths[selectedMonths.length - 1];
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Utente non autenticato');
+      }
+      
+      const { data: method, error: methodError } = await supabase
+        .from('payment_methods')
+        .select('id')
+        .eq('code', paymentMethod)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      
+      if (methodError || !method) {
+        throw new Error(`Metodo di pagamento ${paymentMethod} non configurato. Vai in Gestione > Metodi Pagamento per configurarlo.`);
+      }
+
+      const paymentData = {
+        tenant_id: tenantId,
+        subscription_id: subscription.id,
+        period_from: firstMonth.periodStart || firstMonth.period_from,
+        period_to: lastMonth.periodEnd || lastMonth.period_to,
+        amount: finalTotal,
+        payment_method_id: method.id,
+        created_by: user.id,
+        payment_date: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      };
+
+      console.log('📦 Invio dati pagamento:', paymentData);
+
+      const { data: payment, error: paymentError } = await supabase
+        .from('subscription_payments')
+        .insert(paymentData)
+        .select()
+        .single();
+
+      if (paymentError) throw paymentError;
+
+      if (includeOutstandings && selectedCustomer.outstandings?.items?.length > 0) {
+        const outstandingIds = selectedCustomer.outstandings.items.map(o => String(o.id));
+        const { error: closeError } = await supabase
+          .from("outstanding_payments")
+          .update({
+            status: "paid",
+            closed_at: new Date().toISOString(),
+            closed_by_payment_id: payment.id
+          })
+          .in("id", outstandingIds);
+
+        if (closeError) {
+          console.error("❌ Errore chiusura insoluti:", closeError);
+        } else {
+          console.log("🔒 Insoluti chiusi correttamente:", outstandingIds);
+        }
+      }
+
+      const selectedMethod = paymentMethods.find(m => m.code === paymentMethod);
+      const receiptHTML = generateReceiptHTML(payment, selectedCustomer, selectedMonths, selectedMethod, includeOutstandings);
+      const pdfBlob = await generatePDFFromHTML(receiptHTML, `ricevuta-${Date.now()}.pdf`);
+
+      if (shouldPrint) {
+        printHTML(receiptHTML);
+      }
+
+      if (shouldEmail && selectedCustomer.email) {
+        await sendContractEmail(
+          selectedCustomer.email,
+          `RICEVUTA-${payment.id.substring(0, 8)}`,
+          pdfBlob,
+          `${selectedCustomer.first_name} ${selectedCustomer.last_name}`
+        );
+      }
+
+      alert('✅ Pagamento registrato con successo!');
+
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 2000);
+
+    } catch (error) {
+      console.error('❌ Errore pagamento:', error);
+      alert(error.message || 'Errore durante la registrazione del pagamento');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const getMethodIcon = (method: any) => {
     if (method.is_cash) return <FaMoneyBillWave />;
     if (method.code.includes('CARD') || method.code.includes('BANCOMAT')) return <FaCreditCard />;
@@ -480,7 +542,6 @@ const { error: closeError } = await supabase
           </button>
         </div>
 
-        {/* Risultati ricerca */}
         {showResults && (
           <div style={{ marginTop: "20px" }}>
             {loading ? (
@@ -532,9 +593,8 @@ const { error: closeError } = await supabase
       {/* Dettaglio Cliente Selezionato */}
       {selectedCustomer && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-          {/* Colonna Sinistra - Info Cliente */}
+          {/* Colonna Sinistra */}
           <div>
-            {/* Card Cliente con nome in evidenza */}
             <div style={{ 
               background: BG_DARK, 
               padding: "20px", 
@@ -589,50 +649,81 @@ const { error: closeError } = await supabase
               </div>
             </div>
 
-            {/* Card Veicolo con marca e modello */}
             {selectedCustomer.customer_vehicles?.length > 0 && (
-              <div style={{ 
-                background: BG_DARK, 
-                padding: "20px", 
-                borderRadius: "12px",
-                marginBottom: "20px"
-              }}>
-                <h3 style={{ color: "#fff", marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ color: BLUE }}>🚗</span> Veicoli
-                </h3>
-                {selectedCustomer.customer_vehicles.map((v: any, idx: number) => (
-                  <div key={idx} style={{
-                    padding: "15px",
-                    background: BG_LIGHTER,
-                    borderRadius: "8px",
-                    marginBottom: idx < selectedCustomer.customer_vehicles.length - 1 ? "10px" : 0,
-                    border: "1px solid #333"
-                  }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontWeight: "bold", color: BLUE, fontSize: "16px", marginBottom: "4px" }}>
-                          {v.plate}
-                        </div>
-                        <div style={{ fontSize: "14px", color: "#9ca3af" }}>
-                          {v.make} {v.model}
-                        </div>
-                      </div>
-                      <div style={{
-                        padding: "4px 8px",
-                        background: "#10b981",
-                        color: "#fff",
-                        borderRadius: "4px",
-                        fontSize: "12px"
-                      }}>
-                        Abbonato
-                      </div>
-                    </div>
-                  </div>
-                ))}
+  <div style={{ 
+    background: BG_DARK, 
+    padding: "20px", 
+    borderRadius: "12px",
+    marginBottom: "20px"
+  }}>
+    <h3 style={{ color: "#fff", marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+      <span style={{ color: BLUE }}>🚗</span> Veicoli
+    </h3>
+    {selectedCustomer.customer_vehicles.map((v: any, idx: number) => (
+      <div key={idx} style={{
+        padding: "15px",
+        background: BG_LIGHTER,
+        borderRadius: "8px",
+        marginBottom: idx < selectedCustomer.customer_vehicles.length - 1 ? "10px" : 0,
+        border: "1px solid #333",
+        transition: "all 0.2s"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            {/* Targa */}
+            <div style={{ fontWeight: "bold", color: BLUE, fontSize: "16px", marginBottom: "8px" }}>
+              {v.plate}
+            </div>
+            
+            {/* Marca e Modello */}
+            <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "4px" }}>
+              <span style={{ color: "#fff" }}>Marca:</span> {v.brand || 'N/D'}
+            </div>
+            <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "8px" }}>
+              <span style={{ color: "#fff" }}>Modello:</span> {v.model || 'N/D'}
+            </div>
+            
+            {/* Colore (se presente) */}
+            {v.color && (
+              <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "8px" }}>
+                <span style={{ color: "#fff" }}>Colore:</span> {v.color}
               </div>
             )}
+            
+            {/* Prezzo Canone */}
+            <div style={{ 
+              marginTop: "10px", 
+              padding: "8px", 
+              background: "#1a1f25", 
+              borderRadius: "6px",
+              border: "1px solid #10b98140"
+            }}>
+              <div style={{ fontSize: "14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "#10b981" }}>💰 Canone mensile:</span>
+                <span style={{ color: "#10b981", fontWeight: "bold", fontSize: "16px" }}>
+                  € {(v.monthly_price || 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Badge Abbonato */}
+          <div style={{
+            padding: "4px 10px",
+            background: "#10b981",
+            color: "#fff",
+            borderRadius: "20px",
+            fontSize: "11px",
+            fontWeight: "bold"
+          }}>
+            ABBONATO
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
 
-            {/* ⭐ Insoluti del Cliente */}
             {selectedCustomer.outstandings && selectedCustomer.outstandings.count > 0 && (
               <div style={{
                 background: BG_DARK,
@@ -644,11 +735,9 @@ const { error: closeError } = await supabase
                 <h3 style={{ color: "#fff", marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
                   <span style={{ color: "#ff4444" }}>⚠️</span> Insoluti del Cliente
                 </h3>
-
                 <div style={{ marginBottom: "10px", color: "#fff" }}>
                   Totale insoluti: <strong style={{ color: "#ff4444" }}>€ {selectedCustomer.outstandings.total.toFixed(2)}</strong>
                 </div>
-
                 <ul style={{ color: "#9ca3af", fontSize: "14px", marginBottom: "15px", listStyle: "none", padding: 0 }}>
                   {selectedCustomer.outstandings.items.map((o: any) => (
                     <li key={o.id} style={{ padding: "5px 0", borderBottom: "1px solid #333" }}>
@@ -656,7 +745,6 @@ const { error: closeError } = await supabase
                     </li>
                   ))}
                 </ul>
-
                 <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
                   <input
                     type="checkbox"
@@ -669,12 +757,7 @@ const { error: closeError } = await supabase
               </div>
             )}
 
-            {/* Storico Pagamenti */}
-            <div style={{ 
-              background: BG_DARK, 
-              padding: "20px", 
-              borderRadius: "12px"
-            }}>
+            <div style={{ background: BG_DARK, padding: "20px", borderRadius: "12px" }}>
               <h3 style={{ color: "#fff", marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ color: BLUE }}>📜</span> Storico Pagamenti
               </h3>
@@ -686,20 +769,14 @@ const { error: closeError } = await supabase
                       const start = new Date(payment.period_from);
                       const end = new Date(payment.period_to);
                       const monthsPaid = [];
-                      
                       let current = new Date(start);
                       current = new Date(current.getFullYear(), current.getMonth(), 1);
-                      
                       const lastDay = new Date(end);
                       lastDay.setDate(1);
-                      
                       while (current < lastDay) {
-                        monthsPaid.push(
-                          current.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })
-                        );
+                        monthsPaid.push(current.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }));
                         current.setMonth(current.getMonth() + 1);
                       }
-
                       return (
                         <div key={payment.id} style={{
                           padding: "12px",
@@ -715,7 +792,6 @@ const { error: closeError } = await supabase
                               {new Date(payment.payment_date).toLocaleDateString('it-IT')}
                             </span>
                           </div>
-                          
                           <div style={{ fontSize: "13px", color: "#9ca3af", marginBottom: "5px" }}>
                             <strong>Mesi pagati:</strong>
                           </div>
@@ -732,7 +808,6 @@ const { error: closeError } = await supabase
                               </span>
                             ))}
                           </div>
-                          
                           <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "5px" }}>
                             Metodo: {payment.payment_method?.name || payment.payment_method_id}
                           </div>
@@ -746,15 +821,13 @@ const { error: closeError } = await supabase
             </div>
           </div>
 
-          {/* Colonna Destra - Gestione Pagamento */}
+          {/* Colonna Destra */}
           <div>
-            {/* Selettore Mesi */}
             <MonthSelector
               contract={selectedCustomer.contracts[0]}
               onSelectionChange={handleMonthSelection}
             />
 
-            {/* Riepilogo e Pagamento */}
             {selectedMonths.length > 0 && (
               <div style={{ 
                 background: BG_DARK, 
@@ -777,7 +850,6 @@ const { error: closeError } = await supabase
                     </div>
                   ))}
                   
-                  {/* ⭐ SEZIONE INSOLUTI NEL RIEPILOGO */}
                   {includeOutstandings && selectedCustomer.outstandings && selectedCustomer.outstandings.total > 0 && (
                     <div style={{
                       display: "flex",
@@ -803,7 +875,6 @@ const { error: closeError } = await supabase
                   </div>
                 </div>
 
-                {/* Metodo Pagamento - DINAMICO */}
                 {paymentMethods.length > 0 && (
                   <div style={{ marginBottom: "20px" }}>
                     <div style={{ color: "#9ca3af", fontSize: "13px", marginBottom: "10px" }}>
@@ -837,7 +908,6 @@ const { error: closeError } = await supabase
                   </div>
                 )}
 
-                {/* Opzioni aggiuntive */}
                 <div style={{ 
                   marginBottom: "20px",
                   padding: "15px",
@@ -865,7 +935,6 @@ const { error: closeError } = await supabase
                   </label>
                 </div>
 
-                {/* Bottone Conferma */}
                 <button
                   onClick={handlePayment}
                   disabled={processing || selectedMonths.length === 0 || !paymentMethod}

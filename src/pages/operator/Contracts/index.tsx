@@ -401,75 +401,96 @@ const { data: existingProfile, error: searchError } = await supabase
 if (searchError) {
   console.error(`❌ Errore ricerca veicolo ${plate}:`, searchError);
 } else if (existingProfile) {
+  // VEICOLO ESISTENTE
   vehicleProfileId = existingProfile.id;
   console.log(`✅ Veicolo già esistente: ${vehicleProfileId}`);
+  
+  // Aggiorna il prezzo mensile se presente
+  if (vehicle.monthly_price) {
+    const { error: updatePriceError } = await supabase
+      .from('vehicle_profiles')
+      .update({ 
+        monthly_price: parseFloat(vehicle.monthly_price),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', vehicleProfileId);
+    
+    if (updatePriceError) {
+      console.error(`❌ Errore aggiornamento prezzo per ${plate}:`, updatePriceError);
+    } else {
+      console.log(`✅ Prezzo €${vehicle.monthly_price} salvato per ${plate}`);
+    }
+  }
 } else {
-  // 🔥 INSERIMENTO MINIMALE (solo targa) - quello che ha funzionato
-  // Nel tuo handleGenerateContract, modifica la creazione del veicolo:
-
-console.log(`🆕 Creazione nuovo veicolo (minimale) per targa: ${plate}`);
-
-const { data: newProfile, error: profileError } = await supabase
-  .from('vehicle_profiles')
-  .insert({
-    tenant_id: tenantId,
-    plate: plate,
-    // 🔥 NON INSERIRE brand_id e model_id - solo targa
-    updated_at: new Date().toISOString()
-  })
-  .select()
-  .single();
-
-if (profileError) {
-  console.error(`❌ Errore creazione veicolo ${plate}:`, profileError);
-  continue;
+  // NUOVO VEICOLO
+  console.log(`🆕 Creazione nuovo veicolo per targa: ${plate}`);
+  
+  const { data: newProfile, error: profileError } = await supabase
+    .from('vehicle_profiles')
+    .insert({
+      tenant_id: tenantId,
+      plate: plate,
+      monthly_price: vehicle.monthly_price ? parseFloat(vehicle.monthly_price) : null,
+      updated_at: new Date().toISOString()
+    })
+    .select()
+    .single();
+  
+  if (profileError) {
+    console.error(`❌ Errore creazione veicolo ${plate}:`, profileError);
+    // continua con il prossimo veicolo
+  } else {
+    vehicleProfileId = newProfile.id;
+    console.log(`✅ Nuovo veicolo creato con ID: ${vehicleProfileId}, prezzo: €${vehicle.monthly_price || 0}`);
+  }
 }
 
-vehicleProfileId = newProfile.id;
-console.log(`✅ Veicolo creato con ID: ${vehicleProfileId}`);
-
-// 🔥 NON fare l'update con brand_id e model_id
+// Se abbiamo un ID valido, procedi con gli aggiornamenti aggiuntivi
+if (vehicleProfileId) {
+  vehicleIds.push(vehicleProfileId);
   
-  // 🔥 DOPO aver creato il veicolo, aggiorna marca e modello separatamente
+  // Aggiorna campi aggiuntivi (marca, modello, colore, categoria)
   if (vehicle.brand_id || vehicle.model_id || vehicle.color_id || vehicle.category_id) {
     console.log(`🔄 Aggiornamento campi aggiuntivi per ${plate}...`);
     
-    const updateData: any = {};
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
     if (vehicle.brand_id) updateData.brand_id = vehicle.brand_id;
     if (vehicle.model_id) updateData.model_id = vehicle.model_id;
     if (vehicle.color_id) updateData.color_id = vehicle.color_id;
     if (vehicle.category_id) updateData.category_id = vehicle.category_id;
-    updateData.updated_at = new Date().toISOString();
     
     const { error: updateError } = await supabase
-  .from('vehicle_profiles')
-  .update(updateData)
-  .eq('id', vehicleProfileId);
+      .from('vehicle_profiles')
+      .update(updateData)
+      .eq('id', vehicleProfileId);
 
-if (updateError && updateError.code !== '409') {  // Ignora errore 409 (conflict)
-  console.error(`❌ Errore aggiornamento campi veicolo ${plate}:`, updateError);
-} else if (updateError && updateError.code === '409') {
-  console.log(`⚠️ Aggiornamento saltato (già eseguito dal trigger) per ${plate}`);
-} else {
-  console.log(`✅ Campi aggiuntivi aggiornati per ${plate}`);
+    if (updateError && updateError.code !== '409') {
+      console.error(`❌ Errore aggiornamento campi veicolo ${plate}:`, updateError);
+    } else if (updateError && updateError.code === '409') {
+      console.log(`⚠️ Aggiornamento saltato (già eseguito dal trigger) per ${plate}`);
+    } else {
+      console.log(`✅ Campi aggiuntivi aggiornati per ${plate}`);
+    }
+  }
 }
-  }   
- }
  
  // 2b. ASSOCIA IL VEICOLO AL CLIENTE (tabella customer_vehicles)
     const { error: customerVehicleError } = await supabase
-      .from('customer_vehicles')
-      .insert({
-        tenant_id: tenantId,
-        customer_id: customer.id,
-        plate: plate,
-        brand: vehicle.make || null,
-        model: vehicle.model || null,
-        color: vehicle.color || null,
-        category_id: vehicle.category_id || null,
-        is_active: true,
-        created_at: new Date().toISOString()
-      });
+  .from('customer_vehicles')
+  .insert({
+    tenant_id: tenantId,
+    customer_id: customer.id,
+    plate: plate,
+    brand: vehicle.make || null,
+    model: vehicle.model || null,
+    color: vehicle.color || null,
+    category_id: vehicle.category_id || null,
+    monthly_price: vehicle.monthly_price ? parseFloat(vehicle.monthly_price) : null,  // ← AGGIUNTO
+    is_active: true,
+    created_at: new Date().toISOString()
+  });
 
     if (customerVehicleError) {
       console.error(`❌ Errore associazione veicolo ${plate} al cliente:`, customerVehicleError);

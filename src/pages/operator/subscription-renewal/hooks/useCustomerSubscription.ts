@@ -96,35 +96,27 @@ export const useCustomerSubscription = () => {
             })
           );
 
-          // 6️⃣ Cerca i veicoli
-          const { data: vehicles, error: vehiclesError } = await supabase
-            .from('customer_vehicles')
-            .select('plate')
-            .eq('customer_id', customer.id);
+          // 6️⃣ Cerca i veicoli con i loro prezzi individuali
+const { data: vehicles, error: vehiclesError } = await supabase
+  .from('customer_vehicles')
+  .select('plate, brand, model, color, monthly_price')  // ← AGGIUNTO monthly_price
+  .eq('customer_id', customer.id);
 
-          if (vehiclesError) {
-            console.error('❌ Errore veicoli:', vehiclesError);
-          }
+if (vehiclesError) {
+  console.error('❌ Errore veicoli:', vehiclesError);
+}
 
-          // Recupera i dettagli dei veicoli
-          const vehiclesWithDetails = await Promise.all(
-            (vehicles || []).map(async (v) => {
-              const { data: profile } = await supabase
-                .from('vehicle_profiles')
-                .select(`
-                  brand:vehicle_brands(name),
-                  model:vehicle_models(name)
-                `)
-                .eq('plate', v.plate)
-                .maybeSingle();
-              
-              return {
-                plate: v.plate,
-                make: profile?.brand?.name || '',
-                model: profile?.model?.name || ''
-              };
-            })
-          );
+const vehiclesWithDetails = (vehicles || []).map((v) => {
+  console.log(`🚗 Veicolo ${v.plate}: marca=${v.brand}, modello=${v.model}, prezzo individuale=€${v.monthly_price || 0}`);
+  
+  return {
+    plate: v.plate,
+    brand: v.brand || '',
+    model: v.model || '',
+    color: v.color || '',
+    monthly_price: v.monthly_price || 0  // ← Usa il prezzo dal database
+  };
+});
 
           // 7️⃣ Carica insoluti del cliente
           const { data: outstandingPayments, error: outstandingError } = await supabase

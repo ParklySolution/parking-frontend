@@ -1415,3 +1415,92 @@ WebSocket per aggiornamenti in tempo reale
 Integrazione OCR per lettura targhe
 
 Statistiche reali nel KPI
+
+
+
+
+
+
+
+// 6️⃣ Cerca i veicoli - VERSIONE DEFINITIVA CON LOG
+console.log("🔍 customer.id dal database:", customer.id);
+console.log("🔍 customer.id type:", typeof customer.id);
+console.log("🔍 customer.id length:", customer.id?.length);
+
+// Assicurati che customer.id sia l'UUID corretto
+const customerId = customer.id;
+
+const { data: vehicles, error: vehiclesError } = await supabase
+  .from('customer_vehicles')
+  .select('plate, brand, model, color')
+  .eq('customer_id', customerId);
+
+if (vehiclesError) {
+  console.error('❌ Errore veicoli:', vehiclesError);
+}
+
+console.log("📦 Numero veicoli trovati per customer_id", customerId, ":", vehicles?.length || 0);
+console.log("🚗 Dettaglio veicoli:", vehicles);
+
+// Calcola il prezzo per veicolo dal contratto
+const firstContract = contracts?.[0];
+const contractPrice = firstContract?.price || 0;
+const vehicleCount = vehicles?.length || 1;
+const monthlyPricePerVehicle = contractPrice / vehicleCount;
+
+const vehiclesWithDetails = (vehicles || []).map((v) => {
+  console.log(`🚗 Veicolo ${v.plate}: marca=${v.brand}, modello=${v.model}`);
+  
+  return {
+    plate: v.plate,
+    brand: v.brand || '',
+    model: v.model || '',
+    color: v.color || '',
+    monthly_price: monthlyPricePerVehicle
+  };
+});
+
+
+
+
+{selectedCustomer.customer_vehicles?.length > 0 && (
+              <div style={{ 
+                background: BG_DARK, 
+                padding: "20px", 
+                borderRadius: "12px",
+                marginBottom: "20px"
+              }}>
+                <h3 style={{ color: "#fff", marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ color: BLUE }}>🚗</span> Veicoli
+                </h3>
+                {selectedCustomer.customer_vehicles.map((v: any, idx: number) => (
+                  <div key={idx} style={{
+                    padding: "15px",
+                    background: BG_LIGHTER,
+                    borderRadius: "8px",
+                    marginBottom: idx < selectedCustomer.customer_vehicles.length - 1 ? "10px" : 0,
+                    border: "1px solid #333"
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontWeight: "bold", color: BLUE, fontSize: "16px", marginBottom: "4px" }}>
+                          {v.plate}
+                        </div>
+                        <div style={{ fontSize: "14px", color: "#9ca3af" }}>
+                          {v.make} {v.model}
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: "4px 8px",
+                        background: "#10b981",
+                        color: "#fff",
+                        borderRadius: "4px",
+                        fontSize: "12px"
+                      }}>
+                        Abbonato
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
