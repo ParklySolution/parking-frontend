@@ -28,7 +28,6 @@ export const calculateAvailableMonths = (contract: any) => {
   const payments = contract.subscription_payments || [];
   console.log('💰 PAGAMENTI TROVATI:', payments.length);
   
-  // ⭐ Determina se ci sono pagamenti precedenti
   const hasPreviousPayments = payments.length > 0;
   console.log('💰 PRIMO PAGAMENTO?', hasPreviousPayments ? 'NO (ci sono pagamenti precedenti)' : 'SI (primo pagamento)');
   
@@ -37,7 +36,6 @@ export const calculateAvailableMonths = (contract: any) => {
   );
   const lastPayment = sortedPayments[0];
   
-  // ⭐ LOG: Ultimo pagamento
   console.log('📅 ULTIMO PAGAMENTO:', lastPayment ? {
     id: lastPayment.id,
     period_from: lastPayment.period_from,
@@ -54,11 +52,11 @@ export const calculateAvailableMonths = (contract: any) => {
     console.log('📅 Data ultimo pagato (arrotondata a fine mese):', lastPaidDate.toISOString());
   } else if (contract.valid_from) {
     lastPaidDate = new Date(contract.valid_from);
-    lastPaidDate.setDate(1); // Primo del mese
+    lastPaidDate.setDate(1);
     console.log('📅 Nessun pagamento, uso valid_from (arrotondato a inizio mese):', lastPaidDate.toISOString());
   } else {
     lastPaidDate = new Date();
-    lastPaidDate.setDate(1); // Primo del mese
+    lastPaidDate.setDate(1);
     console.log('📅 Nessun riferimento, uso primo del mese corrente:', lastPaidDate.toISOString());
   }
   
@@ -68,17 +66,18 @@ export const calculateAvailableMonths = (contract: any) => {
     future: []
   };
 
+  // 🔥 DATA DI SCADENZA DEL CONTRATTO
+  const contractEndDate = contract.valid_to ? new Date(contract.valid_to) : null;
+  console.log('📅 DATA SCADENZA CONTRATTO:', contractEndDate?.toISOString());
+
   // Calcola giorni nel mese corrente
   const today_date = new Date();
   const currentYear = today_date.getFullYear();
   const currentMonth = today_date.getMonth();
   
-  // Primo giorno del mese corrente
   const monthStart = new Date(currentYear, currentMonth, 1);
-  // Ultimo giorno del mese corrente
   const monthEnd = new Date(currentYear, currentMonth + 1, 0);
   
-  // ⭐ LOG: Date di riferimento
   console.log('📅 DATE DI RIFERIMENTO:', {
     oggi: today_date.toISOString(),
     monthStart: monthStart.toISOString(),
@@ -87,7 +86,6 @@ export const calculateAvailableMonths = (contract: any) => {
     lastPaidDate_vs_monthStart: lastPaidDate < monthStart ? 'PRIMA' : 'DOPO'
   });
   
-  // Calcola giorni totali nel mese
   const daysInMonth = monthEnd.getDate();
   
   // ⭐ MESE CORRENTE
@@ -95,8 +93,6 @@ export const calculateAvailableMonths = (contract: any) => {
     console.log('✅ CONDIZIONE: lastPaidDate < monthStart - SI (mese non pagato)');
     
     if (hasPreviousPayments) {
-      // ⭐ RINNOVO: mese intero
-      console.log('💰 RINNOVO: mese intero');
       result.current = {
         key: `current-${currentMonth}-${currentYear}`,
         label: `${today_date.toLocaleString('it-IT', { month: 'long' })} ${currentYear}`,
@@ -108,7 +104,6 @@ export const calculateAvailableMonths = (contract: any) => {
         color: BLUE
       };
     } else {
-      // ⭐ PRIMO PAGAMENTO: proporzionale
       const todayDay = today_date.getDate();
       const remainingDays = daysInMonth - todayDay + 1;
       const proportionalPrice = (monthlyPrice / daysInMonth) * remainingDays;
@@ -137,39 +132,41 @@ export const calculateAvailableMonths = (contract: any) => {
     console.log('❌ CONDIZIONE: lastPaidDate < monthStart - NO (mese già pagato)');
   }
 
-  // ⭐ MESI FUTURI (sempre interi)
-  const nextMonthStart = new Date(currentYear, currentMonth + 1, 1);
+  // 🔥 MESI FUTURI (limitatati dalla data di scadenza del contratto)
+  let monthIndex = 0;
+  let currentDate = new Date(currentYear, currentMonth + 1, 1);
   
-  console.log('📅 MESI FUTURI:', {
-    nextMonthStart: nextMonthStart.toISOString(),
-    lastPaidDate: lastPaidDate.toISOString(),
-    lastPaidDate_vs_nextMonthStart: lastPaidDate >= nextMonthStart ? 'DOPO (già pagati)' : 'PRIMA (da pagare)'
-  });
-
-  // Calcola mesi interi futuri (massimo 12)
-  for (let i = 0; i < 12; i++) {
-    const futureDate = new Date();
-    futureDate.setMonth(futureDate.getMonth() + i);
-    futureDate.setDate(1);
+  console.log('📅 INIZIO CALCOLO MESI FUTURI');
+  
+  while (monthIndex < 24) { // Massimo 24 mesi per sicurezza
+    // Se abbiamo una data di scadenza e abbiamo superato, fermati
+    if (contractEndDate && currentDate > contractEndDate) {
+      console.log(`🛑 Fermato per scadenza contratto: ${currentDate.toISOString()} > ${contractEndDate.toISOString()}`);
+      break;
+    }
     
-    const monthStart = new Date(futureDate);
-    const monthEnd = new Date(futureDate.getFullYear(), futureDate.getMonth() + 1, 0);
+    const monthStartFuture = new Date(currentDate);
+    const monthEndFuture = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
     
-    // Confronta la fine del mese con l'ultimo pagato
-    if (monthEnd > lastPaidDate) {
-      console.log(`✅ Mese futuro ${i} da pagare:`, futureDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' }));
+    // Verifica se questo mese è già stato pagato
+    if (monthEndFuture > lastPaidDate) {
+      console.log(`✅ Mese futuro ${monthIndex} da pagare:`, currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' }));
       result.future.push({
-        key: `future-${futureDate.getMonth()}-${futureDate.getFullYear()}`,
-        label: `${futureDate.toLocaleString('it-IT', { month: 'long' })} ${futureDate.getFullYear()}`,
-        period: `${formatDate(monthStart.toISOString())} - ${formatDate(monthEnd.toISOString())}`,
-        periodStart: monthStart.toISOString(),
-        periodEnd: monthEnd.toISOString(),
+        key: `future-${currentDate.getMonth()}-${currentDate.getFullYear()}`,
+        label: `${currentDate.toLocaleString('it-IT', { month: 'long' })} ${currentDate.getFullYear()}`,
+        period: `${formatDate(monthStartFuture.toISOString())} - ${formatDate(monthEndFuture.toISOString())}`,
+        periodStart: monthStartFuture.toISOString(),
+        periodEnd: monthEndFuture.toISOString(),
         amount: monthlyPrice,
         color: '#10b981'
       });
     } else {
-      console.log(`❌ Mese futuro ${i} già pagato:`, futureDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' }));
+      console.log(`❌ Mese futuro ${monthIndex} già pagato:`, currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' }));
     }
+    
+    // Passa al mese successivo
+    currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+    monthIndex++;
   }
 
   console.log('🎯 RISULTATO FINALE:', {

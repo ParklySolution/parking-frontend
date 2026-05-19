@@ -19,6 +19,13 @@ import { formatDate, formatCurrency } from '@/pages/operator/Contracts/utils/for
 import { useCustomerSubscription } from './hooks/useCustomerSubscription';
 import { MonthSelector } from './components/MonthSelector';
 import { useCompanyInfo } from '@/pages/operator/Contracts/hooks/useCompanyInfo';
+import { 
+  renewContract, 
+  suspendContract, 
+  reactivateContract, 
+  cancelContract,
+  getContractStatus
+} from '@/services/contractService';
 
 // Colori
 const BLUE = "#4f8cff";
@@ -42,6 +49,12 @@ export default function SubscriptionRenewal() {
   
   // ⭐ State per gli insoluti
   const [includeOutstandings, setIncludeOutstandings] = useState(false);
+  
+  // ⭐ State per azioni contratto
+  const [contractStatus, setContractStatus] = useState<string>('active');
+  const [contractValidTo, setContractValidTo] = useState<string | null>(null);
+  const [contractValidFrom, setContractValidFrom] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // ⭐ Hook per i dati azienda
   const { companyInfo } = useCompanyInfo(tenantId);
@@ -94,16 +107,126 @@ export default function SubscriptionRenewal() {
     setTotalAmount(total);
   };
 
-  // 🔥 FUNZIONE GENERAZIONE RICEVUTA COMPLETAMENTE AGGIORNATA
+  // 🔥 Gestione rinnovo contratto
+  const handleRenewContract = async () => {
+    if (!selectedCustomer?.contracts?.[0]?.id) {
+      alert('Nessun contratto trovato');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const monthsToAdd = 12; // Rinnovo annuale
+      const result = await renewContract(selectedCustomer.contracts[0].id, monthsToAdd);
+      
+      if (result.success) {
+        alert(`✅ Contratto rinnovato con successo!\nNuova scadenza: ${new Date(result.new_valid_to!).toLocaleDateString('it-IT')}`);
+        
+        // Ricarica i dati del cliente
+        const results = await searchCustomer(selectedCustomer.last_name);
+        if (results && results.length > 0) {
+          setSelectedCustomer(results[0]);
+        }
+      } else {
+        alert(`❌ Errore rinnovo: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Errore rinnovo:', error);
+      alert('Errore durante il rinnovo del contratto');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 🔥 Gestione sospensione contratto
+  const handleSuspendContract = async () => {
+    if (!selectedCustomer?.contracts?.[0]?.id) return;
+    
+    if (!confirm('Sei sicuro di voler SOSPENDERE questo contratto? Il cliente non potrà più effettuare rinnovi finché non verrà riattivato.')) return;
+    
+    setActionLoading(true);
+    try {
+      const result = await suspendContract(selectedCustomer.contracts[0].id);
+      
+      if (result.success) {
+        alert('✅ Contratto sospeso con successo');
+        const results = await searchCustomer(selectedCustomer.last_name);
+        if (results && results.length > 0) {
+          setSelectedCustomer(results[0]);
+        }
+      } else {
+        alert(`❌ Errore sospensione: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Errore sospensione:', error);
+      alert('Errore durante la sospensione del contratto');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 🔥 Gestione riattivazione contratto
+  const handleReactivateContract = async () => {
+    if (!selectedCustomer?.contracts?.[0]?.id) return;
+    
+    setActionLoading(true);
+    try {
+      const result = await reactivateContract(selectedCustomer.contracts[0].id);
+      
+      if (result.success) {
+        alert('✅ Contratto riattivato con successo');
+        const results = await searchCustomer(selectedCustomer.last_name);
+        if (results && results.length > 0) {
+          setSelectedCustomer(results[0]);
+        }
+      } else {
+        alert(`❌ Errore riattivazione: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Errore riattivazione:', error);
+      alert('Errore durante la riattivazione del contratto');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 🔥 Gestione disdetta contratto
+  const handleCancelContract = async () => {
+    if (!selectedCustomer?.contracts?.[0]?.id) return;
+    
+    if (!confirm('⚠️ ATTENZIONE: Questa operazione è IRREVERSIBILE.\nSei sicuro di voler DISDIRE questo contratto? Il cliente non potrà più effettuare rinnovi.')) return;
+    
+    setActionLoading(true);
+    try {
+      const result = await cancelContract(selectedCustomer.contracts[0].id);
+      
+      if (result.success) {
+        alert('✅ Contratto disdetto con successo');
+        const results = await searchCustomer(selectedCustomer.last_name);
+        if (results && results.length > 0) {
+          setSelectedCustomer(results[0]);
+        }
+      } else {
+        alert(`❌ Errore disdetta: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Errore disdetta:', error);
+      alert('Errore durante la disdetta del contratto');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 🔥 FUNZIONE GENERAZIONE RICEVUTA
   const generateReceiptHTML = (payment: any, customer: any, months: any[], method: any, includeOutstandings: boolean) => {
     
     // 🔥 LOG PER DEBUG
-  console.log("===== DEBUG RICEVUTA =====");
-  console.log("customer.customer_vehicles:", customer.customer_vehicles);
-  console.log("customer.customer_vehicles JSON:", JSON.stringify(customer.customer_vehicles, null, 2));
-  console.log("Primo veicolo:", customer.customer_vehicles?.[0]);
-  console.log("Marca primo veicolo:", customer.customer_vehicles?.[0]?.brand);
-  console.log("Modello primo veicolo:", customer.customer_vehicles?.[0]?.model);
+    console.log("===== DEBUG RICEVUTA =====");
+    console.log("customer.customer_vehicles:", customer.customer_vehicles);
+    console.log("customer.customer_vehicles JSON:", JSON.stringify(customer.customer_vehicles, null, 2));
+    console.log("Primo veicolo:", customer.customer_vehicles?.[0]);
+    console.log("Marca primo veicolo:", customer.customer_vehicles?.[0]?.brand);
+    console.log("Modello primo veicolo:", customer.customer_vehicles?.[0]?.model);
 
     // Dati azienda
     const companyName = companyInfo?.company_name || 'Prova Parking';
@@ -262,33 +385,33 @@ export default function SubscriptionRenewal() {
         </div>
 
         <!-- VEICOLI ABBONATI -->
-<div class="section">
-  <div class="section-title">🚗 VEICOLI ABBONATI</div>
-  ${customer.customer_vehicles && customer.customer_vehicles.length > 0 ? 
-    customer.customer_vehicles.map((v: any) => `
-      <div class="vehicle">
-        <div class="row">
-          <span class="label">Targa:</span>
-          <span class="vehicle-plate"><strong>${v.plate}</strong></span>
+        <div class="section">
+          <div class="section-title">🚗 VEICOLI ABBONATI</div>
+          ${customer.customer_vehicles && customer.customer_vehicles.length > 0 ? 
+            customer.customer_vehicles.map((v: any) => `
+              <div class="vehicle">
+                <div class="row">
+                  <span class="label">Targa:</span>
+                  <span class="vehicle-plate"><strong>${v.plate}</strong></span>
+                </div>
+                <div class="row">
+                  <span class="label">Marca:</span>
+                  <span>${v.brand || 'N/D'}</span>
+                </div>
+                <div class="row">
+                  <span class="label">Modello:</span>
+                  <span>${v.model || 'N/D'}</span>
+                </div>
+                ${v.color ? `<div class="row"><span class="label">Colore:</span> <span>${v.color}</span></div>` : ''}
+                <div class="row" style="margin-top: 5px; border-top: 1px dashed #4f8cff; padding-top: 5px;">
+                  <span class="label">💰 Canone mensile:</span>
+                  <span style="color: #10b981; font-weight: bold;">€ ${(v.monthly_price || 0).toFixed(2)}</span>
+                </div>
+              </div>
+            `).join('') 
+            : '<div style="text-align:center; padding:4mm;">⚠️ Nessun veicolo registrato</div>'
+          }
         </div>
-        <div class="row">
-          <span class="label">Marca:</span>
-          <span>${v.brand || 'N/D'}</span>
-        </div>
-        <div class="row">
-          <span class="label">Modello:</span>
-          <span>${v.model || 'N/D'}</span>
-        </div>
-        ${v.color ? `<div class="row"><span class="label">Colore:</span> <span>${v.color}</span></div>` : ''}
-        <div class="row" style="margin-top: 5px; border-top: 1px dashed #4f8cff; padding-top: 5px;">
-          <span class="label">💰 Canone mensile:</span>
-          <span style="color: #10b981; font-weight: bold;">€ ${(v.monthly_price || 0).toFixed(2)}</span>
-        </div>
-      </div>
-    `).join('') 
-    : '<div style="text-align:center; padding:4mm;">⚠️ Nessun veicolo registrato</div>'
-  }
-</div>
 
         <!-- DETTAGLIO PAGAMENTO -->
         <div class="section">
@@ -649,80 +772,233 @@ export default function SubscriptionRenewal() {
               </div>
             </div>
 
+            {/* 🔥 STATO CONTRATTO - NUOVA CARD */}
+            <div style={{ 
+              background: BG_DARK, 
+              padding: "20px", 
+              borderRadius: "12px",
+              marginBottom: "20px",
+              border: `1px solid ${
+                selectedCustomer.contract_status === 'active' ? '#10b981' :
+                selectedCustomer.contract_status === 'suspended' ? '#f59e0b' : '#ef4444'
+              }`
+            }}>
+              <h3 style={{ color: "#fff", marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ 
+                  display: "inline-block",
+                  width: "12px",
+                  height: "12px",
+                  borderRadius: "50%",
+                  background: selectedCustomer.contract_status === 'active' ? '#10b981' :
+                              selectedCustomer.contract_status === 'suspended' ? '#f59e0b' : '#ef4444',
+                  marginRight: "8px"
+                }}></span>
+                Stato Contratto
+              </h3>
+              
+              <div style={{ marginBottom: "15px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <span style={{ color: "#9ca3af" }}>Status:</span>
+                  <span style={{ 
+                    color: selectedCustomer.contract_status === 'active' ? '#10b981' :
+                           selectedCustomer.contract_status === 'suspended' ? '#f59e0b' : '#ef4444',
+                    fontWeight: "bold",
+                    textTransform: "uppercase"
+                  }}>
+                    {selectedCustomer.contract_status === 'active' ? 'ATTIVO' :
+                     selectedCustomer.contract_status === 'suspended' ? 'SOSPESO' : 'DISCESSO'}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <span style={{ color: "#9ca3af" }}>Validità:</span>
+                  <span style={{ color: "#fff" }}>
+                    {selectedCustomer.valid_from ? new Date(selectedCustomer.valid_from).toLocaleDateString('it-IT') : 'N/D'} → 
+                    {selectedCustomer.valid_to ? new Date(selectedCustomer.valid_to).toLocaleDateString('it-IT') : 'N/D'}
+                  </span>
+                </div>
+                {selectedCustomer.renewal_count !== undefined && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#9ca3af" }}>Rinnovi effettuati:</span>
+                    <span style={{ color: BLUE }}>{selectedCustomer.renewal_count}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* PULSANTI AZIONE */}
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                {selectedCustomer.contract_status === 'active' && (
+                  <>
+                    <button
+                      onClick={handleRenewContract}
+                      disabled={actionLoading}
+                      style={{
+                        flex: 1,
+                        padding: "10px",
+                        background: "#10b981",
+                        border: "none",
+                        borderRadius: "8px",
+                        color: "#fff",
+                        cursor: actionLoading ? "not-allowed" : "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        fontSize: "13px",
+                        opacity: actionLoading ? 0.5 : 1
+                      }}
+                    >
+                      🔄 Rinnova
+                    </button>
+                    <button
+                      onClick={handleSuspendContract}
+                      disabled={actionLoading}
+                      style={{
+                        flex: 1,
+                        padding: "10px",
+                        background: "#f59e0b",
+                        border: "none",
+                        borderRadius: "8px",
+                        color: "#fff",
+                        cursor: actionLoading ? "not-allowed" : "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        fontSize: "13px",
+                        opacity: actionLoading ? 0.5 : 1
+                      }}
+                    >
+                      ⏸️ Sospendi
+                    </button>
+                    <button
+                      onClick={handleCancelContract}
+                      disabled={actionLoading}
+                      style={{
+                        flex: 1,
+                        padding: "10px",
+                        background: "#ef4444",
+                        border: "none",
+                        borderRadius: "8px",
+                        color: "#fff",
+                        cursor: actionLoading ? "not-allowed" : "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        fontSize: "13px",
+                        opacity: actionLoading ? 0.5 : 1
+                      }}
+                    >
+                      ❌ Disdici
+                    </button>
+                  </>
+                )}
+                
+                {selectedCustomer.contract_status === 'suspended' && (
+                  <button
+                    onClick={handleReactivateContract}
+                    disabled={actionLoading}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      background: "#10b981",
+                      border: "none",
+                      borderRadius: "8px",
+                      color: "#fff",
+                      cursor: actionLoading ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      fontSize: "13px",
+                      opacity: actionLoading ? 0.5 : 1
+                    }}
+                  >
+                    ▶️ Riattiva contratto
+                  </button>
+                )}
+                
+                {selectedCustomer.contract_status === 'cancelled' && (
+                  <div style={{ 
+                    width: "100%", 
+                    padding: "15px", 
+                    background: "rgba(239,68,68,0.2)", 
+                    borderRadius: "8px",
+                    textAlign: "center",
+                    color: "#ef4444"
+                  }}>
+                    ⚠️ Contratto disdetto il {selectedCustomer.cancelled_at ? new Date(selectedCustomer.cancelled_at).toLocaleDateString('it-IT') : 'data sconosciuta'}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {selectedCustomer.customer_vehicles?.length > 0 && (
-  <div style={{ 
-    background: BG_DARK, 
-    padding: "20px", 
-    borderRadius: "12px",
-    marginBottom: "20px"
-  }}>
-    <h3 style={{ color: "#fff", marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
-      <span style={{ color: BLUE }}>🚗</span> Veicoli
-    </h3>
-    {selectedCustomer.customer_vehicles.map((v: any, idx: number) => (
-      <div key={idx} style={{
-        padding: "15px",
-        background: BG_LIGHTER,
-        borderRadius: "8px",
-        marginBottom: idx < selectedCustomer.customer_vehicles.length - 1 ? "10px" : 0,
-        border: "1px solid #333",
-        transition: "all 0.2s"
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div style={{ flex: 1 }}>
-            {/* Targa */}
-            <div style={{ fontWeight: "bold", color: BLUE, fontSize: "16px", marginBottom: "8px" }}>
-              {v.plate}
-            </div>
-            
-            {/* Marca e Modello */}
-            <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "4px" }}>
-              <span style={{ color: "#fff" }}>Marca:</span> {v.brand || 'N/D'}
-            </div>
-            <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "8px" }}>
-              <span style={{ color: "#fff" }}>Modello:</span> {v.model || 'N/D'}
-            </div>
-            
-            {/* Colore (se presente) */}
-            {v.color && (
-              <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "8px" }}>
-                <span style={{ color: "#fff" }}>Colore:</span> {v.color}
+              <div style={{ 
+                background: BG_DARK, 
+                padding: "20px", 
+                borderRadius: "12px",
+                marginBottom: "20px"
+              }}>
+                <h3 style={{ color: "#fff", marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ color: BLUE }}>🚗</span> Veicoli
+                </h3>
+                {selectedCustomer.customer_vehicles.map((v: any, idx: number) => (
+                  <div key={idx} style={{
+                    padding: "15px",
+                    background: BG_LIGHTER,
+                    borderRadius: "8px",
+                    marginBottom: idx < selectedCustomer.customer_vehicles.length - 1 ? "10px" : 0,
+                    border: "1px solid #333",
+                    transition: "all 0.2s"
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: "bold", color: BLUE, fontSize: "16px", marginBottom: "8px" }}>
+                          {v.plate}
+                        </div>
+                        <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "4px" }}>
+                          <span style={{ color: "#fff" }}>Marca:</span> {v.brand || 'N/D'}
+                        </div>
+                        <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "8px" }}>
+                          <span style={{ color: "#fff" }}>Modello:</span> {v.model || 'N/D'}
+                        </div>
+                        {v.color && (
+                          <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "8px" }}>
+                            <span style={{ color: "#fff" }}>Colore:</span> {v.color}
+                          </div>
+                        )}
+                        <div style={{ 
+                          marginTop: "10px", 
+                          padding: "8px", 
+                          background: "#1a1f25", 
+                          borderRadius: "6px",
+                          border: "1px solid #10b98140"
+                        }}>
+                          <div style={{ fontSize: "14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ color: "#10b981" }}>💰 Canone mensile:</span>
+                            <span style={{ color: "#10b981", fontWeight: "bold", fontSize: "16px" }}>
+                              € {(v.monthly_price || 0).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div style={{
+                        padding: "4px 10px",
+                        background: "#10b981",
+                        color: "#fff",
+                        borderRadius: "20px",
+                        fontSize: "11px",
+                        fontWeight: "bold"
+                      }}>
+                        ABBONATO
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-            
-            {/* Prezzo Canone */}
-            <div style={{ 
-              marginTop: "10px", 
-              padding: "8px", 
-              background: "#1a1f25", 
-              borderRadius: "6px",
-              border: "1px solid #10b98140"
-            }}>
-              <div style={{ fontSize: "14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "#10b981" }}>💰 Canone mensile:</span>
-                <span style={{ color: "#10b981", fontWeight: "bold", fontSize: "16px" }}>
-                  € {(v.monthly_price || 0).toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          {/* Badge Abbonato */}
-          <div style={{
-            padding: "4px 10px",
-            background: "#10b981",
-            color: "#fff",
-            borderRadius: "20px",
-            fontSize: "11px",
-            fontWeight: "bold"
-          }}>
-            ABBONATO
-          </div>
-        </div>
-      </div>
-    ))}
-  </div>
-)}
 
             {selectedCustomer.outstandings && selectedCustomer.outstandings.count > 0 && (
               <div style={{
@@ -823,10 +1099,95 @@ export default function SubscriptionRenewal() {
 
           {/* Colonna Destra */}
           <div>
-            <MonthSelector
-              contract={selectedCustomer.contracts[0]}
-              onSelectionChange={handleMonthSelection}
-            />
+            {/* Selettore Mesi - solo se contratto attivo */}
+            {selectedCustomer.contract_status === 'active' && (
+              <MonthSelector
+                contract={selectedCustomer.contracts[0]}
+                onSelectionChange={handleMonthSelection}
+              />
+            )}
+
+            {/* Se non ci sono mesi da pagare e contratto attivo, mostra rinnovo */}
+            {selectedMonths.length === 0 && selectedCustomer.contract_status === 'active' && (
+              <div style={{ 
+                background: BG_DARK, 
+                padding: "20px", 
+                borderRadius: "12px",
+                marginTop: "20px",
+                textAlign: "center"
+              }}>
+                <p style={{ color: "#9ca3af", marginBottom: "15px" }}>
+                  📅 Il contratto è in regola. Non ci sono mesi da pagare.
+                </p>
+                <button
+                  onClick={handleRenewContract}
+                  disabled={actionLoading}
+                  style={{
+                    padding: "12px 24px",
+                    background: "#10b981",
+                    border: "none",
+                    borderRadius: "8px",
+                    color: "#fff",
+                    cursor: actionLoading ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "14px",
+                    fontWeight: "bold"
+                  }}
+                >
+                  🔄 Rinnova contratto per il prossimo anno
+                </button>
+              </div>
+            )}
+
+            {/* Contratto sospeso o disdetto - mostra messaggio */}
+            {selectedCustomer.contract_status !== 'active' && (
+              <div style={{ 
+                background: BG_DARK, 
+                padding: "30px", 
+                borderRadius: "12px",
+                marginTop: "20px",
+                textAlign: "center"
+              }}>
+                <div style={{ 
+                  fontSize: "48px", 
+                  marginBottom: "15px",
+                  color: selectedCustomer.contract_status === 'suspended' ? '#f59e0b' : '#ef4444'
+                }}>
+                  {selectedCustomer.contract_status === 'suspended' ? '⏸️' : '❌'}
+                </div>
+                <h3 style={{ color: "#fff", marginBottom: "10px" }}>
+                  {selectedCustomer.contract_status === 'suspended' ? 'Contratto Sospeso' : 'Contratto Disdetto'}
+                </h3>
+                <p style={{ color: "#9ca3af", marginBottom: "20px" }}>
+                  {selectedCustomer.contract_status === 'suspended' 
+                    ? 'Questo contratto è stato sospeso. Per procedere con i rinnovi, riattivalo con il pulsante "Riattiva contratto" nella sezione Stato Contratto.'
+                    : 'Questo contratto è stato disdetto e non è più possibile effettuare rinnovi.'}
+                </p>
+                {selectedCustomer.contract_status === 'suspended' && (
+                  <button
+                    onClick={handleReactivateContract}
+                    disabled={actionLoading}
+                    style={{
+                      padding: "12px 24px",
+                      background: "#10b981",
+                      border: "none",
+                      borderRadius: "8px",
+                      color: "#fff",
+                      cursor: actionLoading ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "14px",
+                      fontWeight: "bold"
+                    }}
+                  >
+                    ▶️ Riattiva contratto
+                  </button>
+                )}
+              </div>
+            )}
 
             {selectedMonths.length > 0 && (
               <div style={{ 

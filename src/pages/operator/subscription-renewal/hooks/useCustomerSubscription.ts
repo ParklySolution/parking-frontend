@@ -97,26 +97,26 @@ export const useCustomerSubscription = () => {
           );
 
           // 6️⃣ Cerca i veicoli con i loro prezzi individuali
-const { data: vehicles, error: vehiclesError } = await supabase
-  .from('customer_vehicles')
-  .select('plate, brand, model, color, monthly_price')  // ← AGGIUNTO monthly_price
-  .eq('customer_id', customer.id);
+          const { data: vehicles, error: vehiclesError } = await supabase
+            .from('customer_vehicles')
+            .select('plate, brand, model, color, monthly_price')
+            .eq('customer_id', customer.id);
 
-if (vehiclesError) {
-  console.error('❌ Errore veicoli:', vehiclesError);
-}
+          if (vehiclesError) {
+            console.error('❌ Errore veicoli:', vehiclesError);
+          }
 
-const vehiclesWithDetails = (vehicles || []).map((v) => {
-  console.log(`🚗 Veicolo ${v.plate}: marca=${v.brand}, modello=${v.model}, prezzo individuale=€${v.monthly_price || 0}`);
-  
-  return {
-    plate: v.plate,
-    brand: v.brand || '',
-    model: v.model || '',
-    color: v.color || '',
-    monthly_price: v.monthly_price || 0  // ← Usa il prezzo dal database
-  };
-});
+          const vehiclesWithDetails = (vehicles || []).map((v) => {
+            console.log(`🚗 Veicolo ${v.plate}: marca=${v.brand}, modello=${v.model}, prezzo individuale=€${v.monthly_price || 0}`);
+            
+            return {
+              plate: v.plate,
+              brand: v.brand || '',
+              model: v.model || '',
+              color: v.color || '',
+              monthly_price: v.monthly_price || 0
+            };
+          });
 
           // 7️⃣ Carica insoluti del cliente
           const { data: outstandingPayments, error: outstandingError } = await supabase
@@ -133,6 +133,7 @@ const vehiclesWithDetails = (vehicles || []).map((v) => {
 
           console.log(`💰 Insoluti trovati per cliente ${customer.last_name}:`, outstandingPayments?.length || 0);
 
+          // 🔥 AGGIUNTO: contract_status, valid_to, valid_from
           return {
             ...customer,
             contracts: contractsWithPayments,
@@ -142,7 +143,10 @@ const vehiclesWithDetails = (vehicles || []).map((v) => {
               count: outstandingPayments?.length || 0,
               total: outstandingPayments?.reduce((sum, o) => sum + Number(o.amount || 0), 0),
               items: outstandingPayments || []
-            }
+            },
+            contract_status: contracts?.[0]?.status || 'active',  // 🔥 AGGIUNTO
+            valid_to: contracts?.[0]?.valid_to,                   // 🔥 AGGIUNTO
+            valid_from: contracts?.[0]?.valid_from                // 🔥 AGGIUNTO
           };
         })
       );
