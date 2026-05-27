@@ -194,74 +194,73 @@ export default function Ingresso() {
      TUTTI GLI ALTRI useEffect
      =============================== */
   useEffect(() => {
-    let active = true;
+  let active = true;
 
-    const run = async () => {
-      const clean = plateDebounced.replace(/\s+/g, "").toUpperCase();
-      if (clean.length < 5 || !tenantId) {
-        setLookup({ status: "idle" });
-        return;
-      }
-
-      setLookup({ status: "loading" });
-      const res = await lookupCustomerByPlate(clean);
-      if (!active) return;
-      setLookup(res);
-    };
-
-    run();
-    return () => {
-      active = false;
-    };
-  }, [plateDebounced, tenantId]);
-
-  useEffect(() => {
-    let active = true;
-
-    const run = async () => {
-      if (plateUpper.length < 5 || !tenantId) {
-        setVehicleProfile(null);
-        return;
-      }
-
-      const profile = await fetchVehicleProfileByPlate(
-        plateUpper,
-        tenantId
-      );
-
-      if (!active) return;
-
-      setVehicleProfile(profile);
-
-      if (profile) {
-        setSelectedModel(null);
-        setModelInput("");
-        setModelResults([]);
-        setShowModelSuggestions(false);
-        
-        // ⭐ Se il profilo ha un colore, selezionalo automaticamente
-        if (profile.color) {
-          const color = AVAILABLE_COLORS.find(c => c.name === profile.color?.name);
-          if (color) setSelectedColor(color);
-        }
-      }
-    };
-
-    run();
-    return () => {
-      active = false;
-    };
-  }, [plateUpper, tenantId]);
-
-  // ⭐ Focus automatico sul campo modello dopo targa valida
-  useEffect(() => {
-    if (plateUpper.length >= 5) {
-      setTimeout(() => {
-        const modelInput = document.querySelector<HTMLInputElement>('input[placeholder="Inizia a digitare..."]');
-        if (modelInput) modelInput.focus();
-      }, 100);
+  const run = async () => {
+    const clean = plateDebounced.replace(/\s+/g, "").toUpperCase();
+    if (clean.length < 7 || !tenantId) {
+      setLookup({ status: "idle" });
+      return;
     }
-  }, [plateUpper]);
+
+    setLookup({ status: "loading" });
+    const res = await lookupCustomerByPlate(clean);
+    if (!active) return;
+    setLookup(res);
+  };
+
+  run();
+  return () => {
+    active = false;
+  };
+}, [plateDebounced, tenantId]);
+
+  useEffect(() => {
+  let active = true;
+
+  const run = async () => {
+    if (plateUpper.length < 7 || !tenantId) {
+      setVehicleProfile(null);
+      return;
+    }
+
+    const profile = await fetchVehicleProfileByPlate(plateUpper, tenantId);
+    if (!active) return;
+
+    console.log("🚗 vehicleProfile ricevuto:", profile);
+    setVehicleProfile(profile);
+
+    if (profile) {
+      setSelectedModel(null);
+      setModelInput("");
+      setModelResults([]);
+      setShowModelSuggestions(false);
+      
+      if (profile.color) {
+        const color = AVAILABLE_COLORS.find(c => c.name === profile.color?.name);
+        if (color) setSelectedColor(color);
+      }
+    }
+  };
+
+  run();
+  return () => {
+    active = false;
+  };
+}, [plateUpper, tenantId]);
+
+  // ⭐ Focus automatico sul campo modello solo se targa completa e veicolo non trovato
+useEffect(() => {
+  if (plateUpper.length >= 7 && lookup.status !== 'loading' && lookup.status !== 'found') {
+    setTimeout(() => {
+      const modelInput = document.querySelector<HTMLInputElement>('input[placeholder="Inizia a digitare..."]');
+      if (modelInput) {
+        console.log("🔍 Targa non trovata, focus sul modello per nuovo veicolo");
+        modelInput.focus();
+      }
+    }, 100);
+  }
+}, [plateUpper, lookup.status]);
 
   // ⭐ Auto-selezione modello se esiste profilo veicolo
   useEffect(() => {
@@ -1806,4 +1805,4 @@ export default function Ingresso() {
       )}
     </div>
   );
-}
+}  

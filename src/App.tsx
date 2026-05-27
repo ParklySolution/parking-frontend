@@ -6,6 +6,7 @@ import { supabase } from "./services/supabase";
    LAYOUT PRINCIPALE OPERATORE
 ====================================================== */
 import AppLayout from "./layouts/AppLayout";
+import SimpleLayout from "./layouts/SimpleLayout";
 
 /* ======================================================
    OPERATORE PANEL
@@ -69,7 +70,6 @@ import CreateTenantFromCompany from "@/pages/SuperAdmin/CreateTenantFromCompany"
 /* ======================================================
    TENANT PANEL (impersonation)
 ====================================================== */
-// 🔥 CORREZIONE QUI - percorso corretto
 import TenantLayout from "./pages/Tenant/layout/TenantLayout";
 import RequireTenantSession from "@/middleware/RequireTenantSession";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -197,16 +197,24 @@ function App() {
           <Route path="/sessions" element={<SessionsPage />} />
         </Route>
 
-        {/* OPERATOR CONTRACTS - PROTETTO DA RequireOperator */}
+        {/* ======================================================
+            OPERATOR CONTRACTS - CON SIMPLE LAYOUT (SENZA SIDEBAR)
+        ====================================================== */}
         <Route element={<RequireOperator />}>
-          <Route
-            path="/tenant/:tenantId/contracts"
-            element={<OperatorContracts />}
-          />
-          <Route
-            path="/tenant/:tenantId/subscription-renewal"
-            element={<SubscriptionRenewal />}
-          />
+          <Route element={<SimpleLayout />}>
+            <Route
+              path="/operator/:tenantId/contracts"
+              element={<OperatorContracts />}
+            />
+            <Route
+              path="/operator/:tenantId/contracts-management"
+              element={<ContractsManagement />}
+            />
+            <Route
+              path="/operator/:tenantId/subscription-renewal"
+              element={<SubscriptionRenewal />}
+            />
+          </Route>
         </Route>
 
         {/* ADMIN */}
@@ -264,7 +272,7 @@ function App() {
         </Route>
 
         {/* ======================================================
-            TENANT PANEL - USANDO TENANT LAYOUT
+            TENANT PANEL - USANDO TENANT LAYOUT (CON SIDEBAR)
         ====================================================== */}
         <Route
           path="/tenant/:tenantId"
@@ -281,9 +289,6 @@ function App() {
           <Route path="abbonamenti" element={<TenantAbbonamenti />} />
           <Route path="abbonati" element={<TenantAbbonati />} />
           <Route path="clienti" element={<TenantClienti />} />
-          <Route path="contracts-management" element={<ContractsManagement />} />
-          <Route path="subscription-renewal" element={<SubscriptionRenewal />} />
-          <Route path="contracts" element={<OperatorContracts />} />
 
           <Route path="management/brands" element={<TenantBrands />} />
           <Route path="management/categories" element={<TenantCategories />} />

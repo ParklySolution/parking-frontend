@@ -383,248 +383,329 @@ export default function ContractsManagement() {
   };
 
   const getCustomerVehicles = async (customerId: string) => {
-    try {
-      // Prima prendi le targhe
-      const { data: vehicles } = await supabase
-        .from('customer_vehicles')
-        .select('plate')
-        .eq('customer_id', customerId);
-      
-      if (!vehicles || vehicles.length === 0) return [];
-      
-      // Poi prendi i profili per ogni targa
-      const plates = vehicles.map(v => v.plate);
-      const { data: profiles } = await supabase
-        .from('vehicle_profiles')
-        .select(`
-          plate,
-          brand:vehicle_brands(name),
-          model:vehicle_models(name)
-        `)
-        .in('plate', plates);
-      
-      // Crea una mappa per associare i dati
-      const profileMap = new Map();
-      if (profiles) {
-        profiles.forEach(p => {
-          profileMap.set(p.plate, {
-            make: p.brand?.name || '',
-            model: p.model?.name || ''
-          });
-        });
-      }
-      
-      return vehicles.map(v => ({
-        plate: v.plate,
-        make: profileMap.get(v.plate)?.make || '',
-        model: profileMap.get(v.plate)?.model || '',
-        year: '',
-        color: ''
-      }));
-      
-    } catch (error) {
-      console.error('Errore recupero veicoli:', error);
+  try {
+    // Prendi i veicoli direttamente da customer_vehicles (contiene già brand, model, color, monthly_price!)
+    const { data: vehicles, error } = await supabase
+      .from('customer_vehicles')
+      .select('plate, brand, model, color, monthly_price')
+      .eq('customer_id', customerId);
+    
+    if (error) {
+      console.error('❌ Errore recupero veicoli:', error);
       return [];
+    }
+    
+    if (!vehicles || vehicles.length === 0) return [];
+    
+    console.log('🚗 Veicoli recuperati da customer_vehicles:', vehicles);
+    
+    // Mappa direttamente i dati (sono già tutti presenti!)
+    return vehicles.map(v => ({
+      plate: v.plate || '',
+      make: v.brand || '',
+      model: v.model || '',
+      color: v.color || '',
+      year: '',
+      monthly_price: v.monthly_price || 0
+    }));
+    
+  } catch (error) {
+    console.error('Errore recupero veicoli:', error);
+    return [];
+  }
+};
+
+  const generateContractHTML = (
+  contract: ContractDetails,
+  customer: any,
+  companyInfo: CompanyInfo,
+  vehicles: any[],
+  template: any,
+  terms?: any
+): string => {
+  if (!template || !companyInfo) return "";
+
+  let html = template.content || "";
+  
+  // Pulisci eventuali placeholder malformati
+  html = html.replace(/\{\{\{\s*/g, '{{').replace(/\s*\}\}\}/g, '}}');
+  html = html.replace(/\{\{\s*/g, '{{').replace(/\s*\}\}/g, '}}');
+  html = html.replace(/\{'\{/g, '{').replace(/\}'\}/g, '}');
+
+  // Helper per formattare le date
+  const formatDateHelper = (dateStr: string | undefined): string => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('it-IT');
+    } catch {
+      return '';
     }
   };
 
-  const generateContractHTML = (
-    contract: ContractDetails,
-    customer: any,
-    companyInfo: CompanyInfo,
-    vehicles: any[],
-    template: any,
-    terms?: any
-  ): string => {
-    if (!template || !companyInfo) return "";
+  // Primo veicolo (per retrocompatibilità)
+  const primoVeicolo = vehicles?.[0] || { plate: '', make: '', model: '', color: '', monthly_price: 0 };
 
-    let html = template.content || "";
+  // 🔥 GENERA HTML PER VEICOLI MULTIPLI CON PREZZI INDIVIDUALI
+  const vehiclesHTML = (vehicles || []).filter(v => v.plate).map(v => `
+    <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+      <h4 style="margin-top: 0; color: #4f8cff;">Veicolo: ${v.make || ''} ${v.model || ''}</h4>
+      <p><strong>Targa:</strong> ${v.plate}</p>
+      <p><strong>Anno:</strong> ${v.year || 'N/D'} - <strong>Colore:</strong> ${v.color || 'N/D'}</p>
+      ${v.monthly_price ? `<p><strong>Canone mensile:</strong> € ${v.monthly_price}</p>` : ''}
+    </div>
+  `).join('');
+
+  console.log(`🔍 VEHICLES_HTML generato per ${vehicles?.filter(v => v.plate).length || 0} veicoli`);
+
+  // 🔥 CALCOLA PREZZO TOTALE DAI VEICOLI
+  let totalMonthlyPrice = 0;
+  for (const vehicle of (vehicles || [])) {
+    if (vehicle.monthly_price && vehicle.monthly_price !== "") {
+      totalMonthlyPrice += parseFloat(vehicle.monthly_price);
+    }
+  }
+  
+  const monthlyPrice = totalMonthlyPrice > 0 ? totalMonthlyPrice : (contract.price || 0);
+  const durationMonths = contract.duration_months || 0;
+  const totalAmount = durationMonths * monthlyPrice;
+
+  console.log("🔍 PREZZO CALCOLATO:", {
+    totalMonthlyPrice,
+    monthlyPrice,
+    durationMonths,
+    totalAmount
+  });
+
+  const replacements: Record<string, string> = {
+    // DATI AZIENDA
+    '{{COMPANY_LOGO}}': companyInfo.logo_url ? `<img src="${companyInfo.logo_url}" style="max-height: 60px;">` : '',
+    '{{COMPANY_NAME}}': companyInfo.company_name || '',
+    '{{COMPANY_ADDRESS}}': companyInfo.address || companyInfo.legal_address || '',
+    '{{COMPANY_VAT}}': companyInfo.vat || companyInfo.vat_number || '',
+    '{{COMPANY_EMAIL}}': companyInfo.email || '',
+    '{{COMPANY_PHONE}}': companyInfo.phone || '',
+    '{{COMPANY_TAXCODE}}': companyInfo.tax_code || '',
     
-    // Pulisci eventuali {' '} dal template se presenti
-    html = html.replace(/\{'\{/g, '{').replace(/\}'\}/g, '}');
-
-    // Genera HTML per veicoli multipli
-    const vehiclesHTML = vehicles.map(v => `
-      <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
-        <h4 style="margin-top: 0; color: #4f8cff;">Veicolo: ${v.make || ''} ${v.model || ''}</h4>
-        <p><strong>Targa:</strong> ${v.plate || ''}</p>
-      </div>
-    `).join('');
-
-    const replacements: Record<string, string> = {
-      // DATI AZIENDA
-      '{{COMPANY_NAME}}': companyInfo.company_name || '',
-      '{{COMPANY_ADDRESS}}': companyInfo.address || '',
-      '{{COMPANY_CITY}}': companyInfo.city || '',
-      '{{COMPANY_VAT}}': companyInfo.vat || '',
-      '{{COMPANY_PHONE}}': companyInfo.phone || '',
-      '{{COMPANY_EMAIL}}': companyInfo.email || '',
-      '{{COMPANY_LOGO}}': companyInfo.logo_url ? `<img src="${companyInfo.logo_url}" style="max-height: 60px;">` : '',
-      
-      // DATI CONTRATTO
-      '{{CONTRACT_TITLE}}': template.title || 'Contratto',
-      '{{CONTRACT_NUMBER}}': contract.contract_number,
-      '{{CONTRACT_DATE}}': formatDate(contract.created_at),
-      '{{CONTRACT_DURATION}}': contract.duration_months?.toString() || '',
-      '{{CONTRACT_AMOUNT}}': contract.price?.toString() || '',
-      '{{NOTES}}': contract.notes || '',
-      '{{GENERATION_DATE}}': formatDate(new Date().toISOString()),
-      
-      // DATI CLIENTE
-      '{{CUSTOMER_FIRST_NAME}}': customer?.first_name || '',
-      '{{CUSTOMER_LAST_NAME}}': customer?.last_name || '',
-      '{{CUSTOMER_FULLNAME}}': `${customer?.first_name || ''} ${customer?.last_name || ''}`.trim(),
-      '{{CUSTOMER_FISCAL_CODE}}': customer?.fiscal_code || '',
-      '{{CUSTOMER_FISCALCODE}}': customer?.fiscal_code || '',
-      '{{CUSTOMER_BIRTH_DATE}}': customer?.birth_date ? formatDate(customer.birth_date) : '',
-      '{{CUSTOMER_BIRTH_PLACE}}': customer?.birth_place || '',
-      '{{CUSTOMER_BIRTH_PROVINCE}}': '',
-      '{{CUSTOMER_ADDRESS}}': customer?.address || '',
-      '{{CUSTOMER_CITY}}': customer?.city || '',
-      '{{CUSTOMER_POSTAL_CODE}}': customer?.postal_code || '',
-      '{{CUSTOMER_PROVINCE}}': customer?.province || '',
-      '{{CUSTOMER_EMAIL}}': customer?.email || '',
-      '{{CUSTOMER_PHONE}}': customer?.phone || '',
-      
-      // DOCUMENTO
-      '{{CUSTOMER_DOCUMENT_TYPE}}': customer?.document_type || '',
-      '{{CUSTOMER_DOCUMENT_NUMBER}}': customer?.document_number || '',
-      '{{CUSTOMER_DOCUMENT_ISSUE_DATE}}': customer?.document_issue_date ? formatDate(customer.document_issue_date) : '',
-      '{{CUSTOMER_DOCUMENT_EXPIRY_DATE}}': customer?.document_expiry_date ? formatDate(customer.document_expiry_date) : '',
-      '{{CUSTOMER_DOCUMENT_ISSUING_AUTHORITY}}': customer?.document_issuing_authority || '',
-      
-      // VECCHI PLACEHOLDER (per compatibilità)
-      '{{VEHICLE_PLATE}}': vehicles[0]?.plate || '',
-      '{{VEHICLE_MAKE}}': vehicles[0]?.make || '',
-      '{{VEHICLE_MODEL}}': vehicles[0]?.model || '',
-      
-      // NUOVI PLACEHOLDER per veicoli multipli
-      '{{VEHICLES_LIST}}': vehiclesHTML,
-      '{{VEHICLES_COUNT}}': vehicles.length.toString(),
-      '{{TARIFFS_TABLE}}': '',
-      '{{TOTAL_TARIFFS}}': '0',
-      
-      // TERMINI
-      '{{CONTRACT_TERMS}}': terms?.content || '',
-      '{{TERMS}}': terms?.content || '',
-    };
-
-    Object.entries(replacements).forEach(([key, value]) => {
-      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      html = html.replace(new RegExp(escapedKey, 'g'), value);
-    });
-
-    return html;
+    // DATI CONTRATTO
+    '{{CONTRACT_TITLE}}': template.title || template.name || 'Contratto',
+    '{{CONTRACT_NUMBER}}': contract.contract_number || '',
+    '{{CONTRACT_DATE}}': formatDateHelper(contract.created_at),
+    '{{CONTRACT_DURATION}}': durationMonths.toString(),
+    '{{CONTRACT_AMOUNT}}': monthlyPrice.toFixed(2),
+    '{{CONTRACT_TOTAL}}': totalAmount.toFixed(2),
+    '{{NOTES}}': contract.notes || '',
+    '{{GENERATION_DATE}}': new Date().toLocaleString('it-IT'),
+    
+    // DATI CLIENTE
+    '{{CUSTOMER_FULLNAME}}': `${customer?.first_name || ''} ${customer?.last_name || ''}`.trim(),
+    '{{CUSTOMER_FIRST_NAME}}': customer?.first_name || '',
+    '{{CUSTOMER_LAST_NAME}}': customer?.last_name || '',
+    '{{CUSTOMER_FISCAL_CODE}}': customer?.fiscal_code || '',
+    '{{CUSTOMER_FISCALCODE}}': customer?.fiscal_code || '',
+    
+    // NASCITA
+    '{{CUSTOMER_BIRTH_DATE}}': formatDateHelper(customer?.birth_date),
+    '{{CUSTOMER_BIRTH_PLACE}}': customer?.birth_place || '',
+    '{{CUSTOMER_BIRTH_PROVINCE}}': customer?.birth_province || '',
+    
+    // RESIDENZA
+    '{{CUSTOMER_ADDRESS}}': customer?.address || '',
+    '{{CUSTOMER_CITY}}': customer?.city || '',
+    '{{CUSTOMER_POSTAL_CODE}}': customer?.postal_code || '',
+    '{{CUSTOMER_PROVINCE}}': customer?.province || '',
+    
+    // CONTATTI
+    '{{CUSTOMER_EMAIL}}': customer?.email || '',
+    '{{CUSTOMER_PHONE}}': customer?.phone || '',
+    
+    // DOCUMENTO
+    '{{CUSTOMER_DOCUMENT_TYPE}}': customer?.document_type || '',
+    '{{CUSTOMER_DOCUMENT_NUMBER}}': customer?.document_number || '',
+    '{{CUSTOMER_DOCUMENT_ISSUING_AUTHORITY}}': customer?.document_issuing_authority || '',
+    '{{CUSTOMER_DOCUMENT_ISSUE_DATE}}': formatDateHelper(customer?.document_issue_date),
+    '{{CUSTOMER_DOCUMENT_EXPIRY_DATE}}': formatDateHelper(customer?.document_expiry_date),
+    
+    // VEICOLO SINGOLO (retrocompatibilità)
+    '{{VEHICLE_PLATE}}': primoVeicolo?.plate || '',
+    '{{VEHICLE_MAKE}}': primoVeicolo?.make || '',
+    '{{VEHICLE_MODEL}}': primoVeicolo?.model || '',
+    '{{VEHICLE_YEAR}}': primoVeicolo?.year || '',
+    '{{VEHICLE_COLOR}}': primoVeicolo?.color || '',
+    
+    // VEICOLI MULTIPLI
+    '{{VEHICLES_LIST}}': vehiclesHTML || '<p>Nessun veicolo registrato</p>',
+    '{{VEHICLES_COUNT}}': (vehicles?.filter(v => v.plate).length || 0).toString(),
+    
+    // TARIFFE
+    '{{TARIFFS_TABLE}}': '',
+    '{{TOTAL_TARIFFS}}': '0',
+    
+    // TERMINI
+    '{{CONTRACT_TERMS}}': terms?.content || '',
+    '{{TERMS}}': terms?.content || '',
   };
 
+  console.log("🔍 Placeholder da sostituire:", Object.keys(replacements).length);
+  
+  Object.entries(replacements).forEach(([key, value]) => {
+    if (html.includes(key)) {
+      console.log(`✅ Sostituisco: ${key}`);
+    }
+    const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    html = html.replace(regex, value || '');
+  });
+
+  return html;
+};
+
   const handleViewContract = (contractId: string, contractNumber: string) => {
-    navigate(`/tenant/${tenantId}/contracts`);
+    navigate(`/operator/${tenantId}/contracts`);
   };
 
   const handlePrintContract = async (contractId: string, contractNumber: string, customer: Customer) => {
-    try {
-      setLoading(true);
-      
-      const contract = await getContractDetails(contractId);
-      if (!contract) {
-        alert('Errore nel recupero dei dettagli del contratto');
-        return;
-      }
-      
-      // Se esiste l'HTML salvato, USALO DIRETTAMENTE!
-      if (contract.generated_html) {
-        console.log(`🖨️ Stampa contratto ${contractNumber} usando HTML salvato`);
-        printHTML(contract.generated_html);
-      } else {
-        // Altrimenti rigenera (fallback)
-        console.log(`🖨️ Stampa contratto ${contractNumber} rigenerando HTML (fallback)`);
-        const customerFullData = await getCustomerFullData(customer.id);
-        const companyInfo = await getCompanyInfo(tenantId!);
-        const vehicles = await getCustomerVehicles(customer.id);
-        
-        let terms = null;
-        if (contract.template?.terms_id) {
-          const { data: termsData } = await supabase
-            .from('contract_terms')
-            .select('*')
-            .eq('id', contract.template.terms_id)
-            .single();
-          terms = termsData;
-        }
-        
-        const html = generateContractHTML(
-          contract,
-          customerFullData || customer,
-          companyInfo,
-          vehicles,
-          contract.template,
-          terms
-        );
-        
-        printHTML(html);
-      }
-    } catch (error) {
-      console.error('Errore stampa contratto:', error);
-      alert('Errore durante la stampa del contratto');
-    } finally {
-      setLoading(false);
+  try {
+    setLoading(true);
+    
+    const contract = await getContractDetails(contractId);
+    if (!contract) {
+      alert('Errore nel recupero dei dettagli del contratto');
+      return;
     }
-  };
+    
+    // 🔥 LOG DIAGNOSTICO
+    console.log(`📄 Contratto ${contractNumber}:`, {
+      hasGeneratedHtml: !!contract.generated_html,
+      generatedHtmlLength: contract.generated_html?.length || 0,
+      generatedHtmlPreview: contract.generated_html?.substring(0, 200)
+    });
+    
+    // Se esiste l'HTML salvato e ha contenuto significativo, USALO
+    if (contract.generated_html && contract.generated_html.length > 500) {
+      console.log(`🖨️ Stampa contratto ${contractNumber} usando HTML salvato`);
+      printHTML(contract.generated_html);
+    } else {
+      // Altrimenti rigenera (fallback)
+      console.log(`🖨️ Stampa contratto ${contractNumber} rigenerando HTML (fallback) - HTML salvato troppo corto o assente`);
+      const customerFullData = await getCustomerFullData(customer.id);
+      const companyInfo = await getCompanyInfo(tenantId!);
+      const vehicles = await getCustomerVehicles(customer.id);
+      
+      console.log("🔍 Dati per rigenerazione:", {
+        hasCustomerFullData: !!customerFullData,
+        hasCompanyInfo: !!companyInfo,
+        vehiclesCount: vehicles.length
+      });
+      
+      let terms = null;
+      if (contract.template?.terms_id) {
+        const { data: termsData } = await supabase
+          .from('contract_terms')
+          .select('*')
+          .eq('id', contract.template.terms_id)
+          .single();
+        terms = termsData;
+      }
+      
+      const html = generateContractHTML(
+        contract,
+        customerFullData || customer,
+        companyInfo,
+        vehicles,
+        contract.template,
+        terms
+      );
+      
+      console.log("🔍 HTML generato lunghezza:", html?.length || 0);
+      
+      if (html && html.length > 100) {
+        printHTML(html);
+      } else {
+        console.error("❌ HTML generato troppo corto o vuoto");
+        alert('Errore: impossibile generare il contratto per la stampa');
+      }
+    }
+  } catch (error) {
+    console.error('Errore stampa contratto:', error);
+    alert('Errore durante la stampa del contratto: ' + (error as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handlePdfContract = async (contractId: string, contractNumber: string, customer: Customer) => {
-    try {
-      setLoading(true);
-      
-      const contract = await getContractDetails(contractId);
-      if (!contract) {
-        alert('Errore nel recupero dei dettagli del contratto');
-        return;
-      }
-      
-      // Se esiste l'HTML salvato, USALO DIRETTAMENTE!
-      if (contract.generated_html) {
-        console.log(`📄 Generazione PDF contratto ${contractNumber} usando HTML salvato`);
-        const safeFileName = `contratto-${contractNumber || Date.now()}.pdf`;
-        const pdfBlob = await generatePDFFromHTML(contract.generated_html, safeFileName);
-        downloadPDF(pdfBlob, safeFileName);
-      } else {
-        // Altrimenti rigenera (fallback)
-        console.log(`📄 Generazione PDF contratto ${contractNumber} rigenerando HTML (fallback)`);
-        const customerFullData = await getCustomerFullData(customer.id);
-        const companyInfo = await getCompanyInfo(tenantId!);
-        const vehicles = await getCustomerVehicles(customer.id);
-        
-        let terms = null;
-        if (contract.template?.terms_id) {
-          const { data: termsData } = await supabase
-            .from('contract_terms')
-            .select('*')
-            .eq('id', contract.template.terms_id)
-            .single();
-          terms = termsData;
-        }
-        
-        const html = generateContractHTML(
-          contract,
-          customerFullData || customer,
-          companyInfo,
-          vehicles,
-          contract.template,
-          terms
-        );
-        
-        const safeFileName = `contratto-${contractNumber || Date.now()}.pdf`;
-        const pdfBlob = await generatePDFFromHTML(html, safeFileName);
-        downloadPDF(pdfBlob, safeFileName);
-      }
-      
-    } catch (error) {
-      console.error('Errore generazione PDF:', error);
-      alert('Errore durante la generazione del PDF');
-    } finally {
-      setLoading(false);
+  try {
+    setLoading(true);
+    
+    const contract = await getContractDetails(contractId);
+    if (!contract) {
+      alert('Errore nel recupero dei dettagli del contratto');
+      return;
     }
-  };
+    
+    console.log(`📄 Contratto ${contractNumber}:`, {
+      hasGeneratedHtml: !!contract.generated_html,
+      htmlLength: contract.generated_html?.length || 0
+    });
+    
+    let html: string;
+    
+    // Se esiste l'HTML salvato e ha contenuto significativo (> 500 caratteri), USALO
+    if (contract.generated_html && contract.generated_html.length > 500) {
+      console.log(`📄 Generazione PDF contratto ${contractNumber} usando HTML salvato`);
+      html = contract.generated_html;
+    } else {
+      // Altrimenti rigenera (fallback)
+      console.log(`📄 Generazione PDF contratto ${contractNumber} rigenerando HTML (fallback) - HTML salvato troppo corto o assente`);
+      
+      const customerFullData = await getCustomerFullData(customer.id);
+      const companyInfo = await getCompanyInfo(tenantId!);
+      const vehicles = await getCustomerVehicles(customer.id);
+      
+      console.log("🔍 Dati per rigenerazione:", {
+        hasCustomerFullData: !!customerFullData,
+        hasCompanyInfo: !!companyInfo,
+        vehiclesCount: vehicles.length
+      });
+      
+      let terms = null;
+      if (contract.template?.terms_id) {
+        const { data: termsData } = await supabase
+          .from('contract_terms')
+          .select('*')
+          .eq('id', contract.template.terms_id)
+          .single();
+        terms = termsData;
+      }
+      
+      html = generateContractHTML(
+        contract,
+        customerFullData || customer,
+        companyInfo,
+        vehicles,
+        contract.template,
+        terms
+      );
+      
+      console.log("🔍 HTML generato lunghezza:", html?.length || 0);
+    }
+    
+    if (html && html.length > 100) {
+      const safeFileName = `contratto-${contractNumber || Date.now()}.pdf`;
+      const pdfBlob = await generatePDFFromHTML(html, safeFileName);
+      downloadPDF(pdfBlob, safeFileName);
+    } else {
+      console.error("❌ HTML generato troppo corto o vuoto");
+      alert('Errore: impossibile generare il PDF del contratto');
+    }
+    
+  } catch (error) {
+    console.error('Errore generazione PDF:', error);
+    alert('Errore durante la generazione del PDF: ' + (error as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleEmailContract = async (contractId: string, contractNumber: string, email?: string | null, customer?: Customer) => {
     if (!email) {

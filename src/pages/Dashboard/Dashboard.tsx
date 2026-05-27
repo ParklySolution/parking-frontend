@@ -160,7 +160,7 @@ export default function Dashboard() {
         return;
       }
       
-      navigate(`/tenant/${tenantId}/contracts`);
+      navigate(`/operator/${tenantId}/contracts`);
     } catch (error) {
       console.error("Errore nella navigazione contratti:", error);
       alert("Errore nell'aprire la pagina contratti");
@@ -175,7 +175,7 @@ export default function Dashboard() {
       alert("Tenant non identificato. Attendere il caricamento...");
       return;
     }
-    navigate(`/tenant/${tenantId}/contracts-management`);
+    navigate(`/operator/${tenantId}/contracts-management`);
   };
 
   /* ===============================
@@ -186,7 +186,7 @@ export default function Dashboard() {
       alert("Tenant non identificato. Attendere il caricamento...");
       return;
     }
-    navigate(`/tenant/${tenantId}/subscription-renewal`);
+    navigate(`/operator/${tenantId}/subscription-renewal`);
   };
 
   /* ===============================
