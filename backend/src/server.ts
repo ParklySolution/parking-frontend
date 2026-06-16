@@ -10,6 +10,10 @@ import superadminRoutes from "./routes/superadmin.routes.js";
 import tenantRoutes from "./routes/tenant.routes.js";
 import authRoutes from "./routes/auth.routes.js"; // 🔥 NUOVA ROUTE PER AUTH
 import vehicleRoutes from "./routes/vehicle.routes";
+import emailRoutes from "./routes/emailRoutes.js"; // 🔥 ROTTA EMAIL
+
+// Import cron job per processare email
+import "./jobs/emailProcessor.js"; // 🔥 CRON JOB
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -35,6 +39,7 @@ app.use("/api/superadmin", superadminRoutes);
 app.use("/api/tenant", tenantRoutes);
 app.use("/api/auth", authRoutes); // 🔥 NUOVA ROUTE PER AUTH (forgot/reset password)
 app.use("/api/vehicles", vehicleRoutes);
+app.use("/api/email", emailRoutes); // 🔥 ROTTA EMAIL (process-emails)
 
 // 404 handler
 app.use((_req, res) => {
@@ -57,4 +62,6 @@ app.listen(PORT, () => {
   console.log(`🔗 Routes: /api/superadmin/tenants/:tenantId/create-tenant-admin`);
   console.log(`🔗 Tenant routes: /api/tenant/:tenantId/brands`);
   console.log(`🔗 Auth routes: /api/auth/forgot-password, /api/auth/reset-password`);
+  console.log(`📧 Email routes: /api/email/process-emails`);
+  console.log(`⏰ Cron job email processor avviato (controlla ogni minuto)`);
 });

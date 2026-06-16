@@ -1,3 +1,4 @@
+
 /* =========================
    RESET E FULLSCREEN
    ========================= */
@@ -94,7 +95,7 @@
   flex: 1;
   display: grid;
   grid-template-columns: 320px 1fr 420px;
-  grid-template-rows: 1fr 180px;
+  grid-template-rows: auto 1fr;
   grid-template-areas:
     "targhe foto transiti"
     "vuoto menu storico";
@@ -561,4 +562,3 @@
   font-weight: 600;
   color: #4f9cff;
 }
-

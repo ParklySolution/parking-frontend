@@ -18,6 +18,8 @@ import Subscriptions from "./pages/Subscriptions";
 import Customers from "./pages/Customers";
 import ShiftsPage from "./pages/shifts";
 import SessionsPage from "./pages/Sessions";
+import OutstandingPayments from "./pages/operator/OutstandingPayments";
+import FidelityCustomers from "./pages/operator/FidelityCustomers";
 
 /* ======================================================
    ADMIN PANEL (MANAGER)
@@ -98,6 +100,11 @@ import CompanyInfo from "@/pages/Tenant/management/company-info/CompanyInfo";
 import ContractTermsList from "@/pages/Tenant/management/contract-terms/ContractTermsList";
 import PaymentMethodsManagement from "@/pages/Tenant/management/payment-methods";
 import TenantUsers from "@/pages/Tenant/management/TenantUsers";
+import FidelityProgramsList from "@/pages/Tenant/management/fidelity-programs";
+
+/* 🔥 TENANT EMAIL TEMPLATES (NUOVO) */
+import EmailTemplates from "@/pages/Tenant/EmailTemplates";
+import TemplateForm from "@/pages/Tenant/EmailTemplates/TemplateForm";
 
 /* ======================================================
    SUPER ADMIN CREATION
@@ -192,6 +199,8 @@ function App() {
             <Route path="/subscriptions" element={<Subscriptions />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/shifts" element={<ShiftsPage />} />
+            <Route path="/outstanding-payments" element={<OutstandingPayments />} />
+            <Route path="/fidelity-customers" element={<FidelityCustomers />} />
           </Route>
 
           <Route path="/sessions" element={<SessionsPage />} />
@@ -303,6 +312,12 @@ function App() {
           <Route path="management/contract-terms" element={<ContractTermsList />} />
           <Route path="management/payment-methods" element={<PaymentMethodsManagement />} />
           <Route path="management/users" element={<TenantUsers />} />
+          <Route path="management/fidelity-programs" element={<FidelityProgramsList />} />
+          
+          {/* 🔥 TENANT EMAIL TEMPLATES (NUOVE ROTTE) */}
+          <Route path="management/email-templates" element={<EmailTemplates />} />
+          <Route path="management/email-templates/new" element={<TemplateForm />} />
+          <Route path="management/email-templates/edit/:id" element={<TemplateForm />} />
         </Route>
 
         <Route path="/auth/impersonate-callback" element={<ImpersonateCallback />} />

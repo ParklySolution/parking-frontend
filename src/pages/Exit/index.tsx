@@ -1,4 +1,4 @@
-// src/pages/exit/index.tsx - VERSIONE COMPLETA CON TUTTE LE FUNZIONALITÀ
+// src/pages/exit/index.tsx - VERSIONE COMPLETA CON CORREZIONE LAVAGGI
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -11,6 +11,7 @@ import ClientRecognitionBar from "@/components/ingress/ClientRecognitionBar";
 import {
   fetchOpenSessionByTicket,
   closeParkingSession,
+  updateWashServiceStatus,  // 🔥 AGGIUNTO IMPORT
 } from "@/services/parkingSessionService";
 
 import { getAvailableWashServices } from "@/services/washService";
@@ -223,6 +224,10 @@ export default function Exit() {
   
   // 🔥 FLAG PER EVITARE RACE CONDITION
   const [isExiting, setIsExiting] = useState(false);
+
+  // 🔥🔥🔥 STATI PER LA GESTIONE DEL PREMIO FEDELTÀ 🔥🔥🔥
+  const [premioUsato, setPremioUsato] = useState(false);
+  const [premioSconto, setPremioSconto] = useState(0);
 
   /* =========================================
      PULSANTI EXTRA
@@ -668,36 +673,37 @@ export default function Exit() {
   /* =========================================
       CARICA DATI FEDELTÀ
       ========================================= */
-  const loadFidelityData = async (customerId: string) => {
-    if (!tenantId || !customerId) return;
+const loadFidelityData = async (customerId: string) => {
+  if (!tenantId || !customerId) return;
 
-    try {
-      const { data, error } = await supabase
-        .from('customer_fidelity')
-        .select(`
-          *,
-          fidelity_programs (*)
-        `)
-        .eq('customer_id', customerId)
-        .eq('is_active', true)
-        .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('customer_fidelity')
+      .select(`
+        *,
+        fidelity_programs (*)
+      `)
+      .eq('customer_id', customerId)
+      .eq('is_active', true)
+      .maybeSingle();
 
-      if (error) throw error;
+    if (error) throw error;
 
-      if (data) {
-        setFidelityData({
-          id: data.id,
-          program_id: data.fidelity_program_id,
-          points: data.points || 0,
-          washes_count: data.washes_count || 0,
-          free_washes_available: data.free_washes_available || 0,
-          program: data.fidelity_programs
-        });
-      }
-    } catch (error) {
-      console.error("Errore caricamento fedeltà:", error);
+    if (data) {
+      // 🔥 MAPPATURA CORRETTA con colonne REALI
+      setFidelityData({
+        id: data.id,
+        program_id: data.fidelity_program_id,
+        points: data.current_count,                    // ✅ current_count esiste
+        washes_count: data.current_count,               // ✅ current_count esiste
+        free_washes_available: data.reward_available ? 1 : 0,  // ✅ reward_available esiste
+        program: data.fidelity_programs
+      });
     }
-  };
+  } catch (error) {
+    console.error("Errore caricamento fedeltà:", error);
+  }
+};
 
   /* =========================================
       CARICA INSOLUTI PER CLIENTE
@@ -936,105 +942,157 @@ export default function Exit() {
     /* =========================================
       CALCOLO PREZZO CON ENGINE
    ========================================= */
-  const calculateFinalTotal = useCallback(async () => {
-    if (!session?.entry_time || !tenantId) {
-      return 0;
-    }
+const calculateFinalTotal = useCallback(async () => {
+  if (!session?.entry_time || !tenantId) {
+    return 0;
+  }
 
-    try {
-      console.log("🔍 LOOKUP RESULT COMPLETO:", lookupResult);
-      console.log("🔍 LOOKUP RESULT CONTRACTS DETTAGLIO:", JSON.stringify(lookupResult.contracts, null, 2));
-      console.log("🧼 WASH SERVICES in Exit:", washServices);
-      console.log("🧼 washTotal:", washTotal);
-      console.log("⏱️ oreSosta:", oreSosta);
+  try {
+    console.log("🔍 LOOKUP RESULT COMPLETO:", lookupResult);
+    console.log("🔍 LOOKUP RESULT CONTRACTS DETTAGLIO:", JSON.stringify(lookupResult.contracts, null, 2));
+    console.log("🧼 WASH SERVICES in Exit:", washServices);
+    console.log("🧼 washTotal:", washTotal);
+    console.log("⏱️ oreSosta:", oreSosta);
+    console.log("🎁 reward_available:", lookupResult?.fidelity?.reward_available);
+    console.log("🔍🔍🔍 lookupResult?.fidelity?.reward_available:", lookupResult?.fidelity?.reward_available);
 
-      const result = await calculatePrice({
-        tenantId,
-        session,
-        overrideId: overrideButton?.id,
-        additionalButtonIds: appliedButtons.map(b => b.id),
-        lookupResult: {
-          subscription: {
-            subscription_type: lookupResult?.contracts?.subscription?.subscription_type ?? null,
-            is_active: lookupResult?.contracts?.subscription?.is_active ?? false
-          }
+    const result = await calculatePrice({
+      tenantId,
+      session,
+      overrideId: overrideButton?.id,
+      additionalButtonIds: appliedButtons.map(b => b.id),
+      lookupResult: {
+        subscription: {
+          subscription_type: lookupResult?.contracts?.subscription?.subscription_type ?? null,
+          is_active: lookupResult?.contracts?.subscription?.is_active ?? false
         }
-      });
-
-      const baseAmount = result.amount;
-      const totaleLavaggi = useFreeWash ? 0 : washTotal;
-      const totaleInsoluti = totalePendenti;
-      
-      // Se ci sono lavaggi e nessuna sosta, paga solo i lavaggi
-      const hasWashOnly = washServices.length > 0 && oreSosta === 0;
-      
-      let totaleFinale;
-      if (hasWashOnly) {
-        totaleFinale = totaleLavaggi - totaleConvenzione + scontoManuale + totaleInsoluti;
-        console.log("🎯 SOLO LAVAGGIO - nessuna sosta - importo:", totaleLavaggi);
-      } else {
-        totaleFinale = baseAmount + totaleLavaggi - totaleConvenzione + scontoManuale + totaleInsoluti;
       }
+    });
 
-      // Calcola breakdown per la UI dei pernottamenti
-      if (priceRules && oreSosta > 0 && !hasWashOnly && priceRules.overnight_24h && priceRules.overnight_24h > 0) {
-        const giorniInteri = Math.floor(oreSosta / 24);
-        const costoNotti = giorniInteri * priceRules.overnight_24h;
-        const oreResidue = oreSosta % 24;
-        const firstHour = priceRules.first_hour || 0;
-        const nextHours = priceRules.next_hours || 0;
-        const costoOre = firstHour + (Math.max(0, oreResidue - 1) * nextHours);
-        setPriceBreakdown({ giorniInteri, costoNotti, costoOre });
-      } else {
-        setPriceBreakdown(null);
+    const baseAmount = result.amount;
+    let totaleLavaggi = useFreeWash ? 0 : washTotal;
+    const totaleInsoluti = totalePendenti;
+    
+    // 🔥🔥🔥 APPLICA IL PREMIO FEDELTÀ (LAVAGGIO GRATUITO) 🔥🔥🔥
+    let premioSconto = 0;
+    let premioApplicato = false;
+
+    // Leggi reward_available da lookupResult.fidelity
+    // Se il cliente ha un premio disponibile E non ha già usato il checkbox manuale, applica automaticamente
+    const hasReward = lookupResult?.fidelity?.reward_available === true;
+    console.log(`🎁 hasReward: ${hasReward}, washServices.length: ${washServices.length}, useFreeWash: ${useFreeWash}`);
+
+    // 🔥 APPLICAZIONE AUTOMATICA DEL PREMIO (anche senza checkbox)
+    if (hasReward && washServices.length > 0) {
+      // Trova il primo servizio lavaggio selezionato
+      const selectedWash = availableWashServices.find(w => 
+        washServices.some(ws => ws.washServiceId === w.washServiceId)
+      );
+      if (selectedWash) {
+        premioSconto = selectedWash.price;
+        premioApplicato = true;
+        // Applica lo sconto al totale dei lavaggi
+        totaleLavaggi = Math.max(0, totaleLavaggi - premioSconto);
+        console.log(`🎁 PREMIO FEDELTÀ APPLICATO AUTOMATICAMENTE: -€${premioSconto} (${selectedWash.serviceName} gratuito)`);
       }
-
-      console.log("💰 CALCOLO PREZZO FINALE:", {
-        engineType: result.type,
-        abbonato: result.type === "subscription" ? "SÌ (Sosta gratuita)" : "NO",
-        base_sosta: baseAmount,
-        lavaggi: totaleLavaggi,
-        hasWashOnly: hasWashOnly,
-        convenzione: totaleConvenzione,
-        scontoManuale: scontoManuale,
-        insoluti: totaleInsoluti,
-        totale: Math.max(0, totaleFinale)
-      });
-
-      return Math.max(0, totaleFinale);
-
-    } catch (error) {
-      console.error("❌ Errore calcolo prezzo:", error);
-      return 0;
     }
-  }, [
-    session,
-    tenantId,
-    overrideButton,
-    appliedButtons,
-    washServices,
-    washTotal,
-    oreSosta,
-    useFreeWash,
-    totaleConvenzione,
-    scontoManuale,
-    totalePendenti,
-    lookupResult,
-    isExiting,
-    priceRules
-  ]);
 
-  useEffect(() => {
-    const updatePrice = async () => {
-      console.log("🔄 UpdatePrice triggerato");
-      console.log("📊 washServices attuali:", washServices);
-      console.log("📊 washTotal attuale:", washTotal);
-      console.log("📊 oreSosta attuale:", oreSosta);
-      const price = await calculateFinalTotal();
-      setCalculatedPrice(price);
-    };
-    updatePrice();
-  }, [calculateFinalTotal, washServices, washTotal, oreSosta]);
+    // Salva lo stato del premio per usarlo in handlePayment
+    setPremioUsato(premioApplicato);
+    setPremioSconto(premioSconto);
+    
+    // Se ci sono lavaggi e nessuna sosta, paga solo i lavaggi
+    const hasWashOnly = washServices.length > 0 && oreSosta === 0;
+    
+    let totaleFinale;
+    if (hasWashOnly) {
+      totaleFinale = totaleLavaggi - totaleConvenzione + scontoManuale + totaleInsoluti;
+      console.log("🎯 SOLO LAVAGGIO - nessuna sosta - importo:", totaleLavaggi);
+    } else {
+      totaleFinale = baseAmount + totaleLavaggi - totaleConvenzione + scontoManuale + totaleInsoluti;
+    }
+
+    // Calcola breakdown per la UI dei pernottamenti
+    if (priceRules && oreSosta > 0 && !hasWashOnly && priceRules.overnight_24h && priceRules.overnight_24h > 0) {
+      const giorniInteri = Math.floor(oreSosta / 24);
+      const costoNotti = giorniInteri * priceRules.overnight_24h;
+      const oreResidue = oreSosta % 24;
+      const firstHour = priceRules.first_hour || 0;
+      const nextHours = priceRules.next_hours || 0;
+      const costoOre = firstHour + (Math.max(0, oreResidue - 1) * nextHours);
+      setPriceBreakdown({ giorniInteri, costoNotti, costoOre });
+    } else {
+      setPriceBreakdown(null);
+    }
+
+    console.log("💰 CALCOLO PREZZO FINALE:", {
+      engineType: result.type,
+      abbonato: result.type === "subscription" ? "SÌ (Sosta gratuita)" : "NO",
+      base_sosta: baseAmount,
+      lavaggi: totaleLavaggi,
+      premio_sconto: premioSconto,
+      premio_applicato: premioApplicato,
+      hasWashOnly: hasWashOnly,
+      convenzione: totaleConvenzione,
+      scontoManuale: scontoManuale,
+      insoluti: totaleInsoluti,
+      totale: Math.max(0, totaleFinale)
+    });
+
+    return Math.max(0, totaleFinale);
+
+  } catch (error) {
+    console.error("❌ Errore calcolo prezzo:", error);
+    return 0;
+  }
+}, [
+  session,
+  tenantId,
+  overrideButton,
+  appliedButtons,
+  washServices,
+  washTotal,
+  oreSosta,
+  useFreeWash,
+  totaleConvenzione,
+  scontoManuale,
+  totalePendenti,
+  lookupResult,
+  isExiting,
+  priceRules,
+  availableWashServices
+]);
+
+useEffect(() => {
+  const updatePrice = async () => {
+    console.log("🔄 UpdatePrice triggerato");
+    console.log("📊 washServices attuali:", washServices);
+    console.log("📊 washTotal attuale:", washTotal);
+    console.log("📊 oreSosta attuale:", oreSosta);
+    
+    // 🔥 Anche se washServices è vuoto, prova a prenderli da session
+    if (washServices.length === 0 && session?.parking_session_wash_services?.length > 0) {
+      console.log("🔄 Ricarico washServices da session...");
+      const ws = session.parking_session_wash_services.map((w: any) => ({
+        washServiceId: w.wash_service_id,
+        quantity: 1,
+        _price: w.wash_service_price,
+        _name: w.wash_service_name
+      }));
+      setWashServices(ws);
+      let total = 0;
+      for (const w of ws) {
+        const service = availableWashServices.find(s => s.washServiceId === w.washServiceId);
+        total += service?.price || w._price || 0;
+      }
+      setWashTotal(total);
+    }
+    
+    const price = await calculateFinalTotal();
+    setCalculatedPrice(price);
+  };
+  updatePrice();
+}, [calculateFinalTotal, washServices, washTotal, oreSosta, session, availableWashServices]);
 
   /* =========================================
       GESTIONE PULSANTI EXTRA
@@ -1093,158 +1151,305 @@ export default function Exit() {
   /* =========================================
       LOOKUP SESSIONE PER TICKET (CORRETTO - CARICA PRIMA I SERVIZI)
    ========================================= */
-  const handleLookup = async (ticketNum?: number) => {
-    const numToUse = ticketNum !== undefined ? ticketNum : ticketNumber;
+const handleLookup = async (ticketNum?: number) => {
+  const numToUse = ticketNum !== undefined ? ticketNum : ticketNumber;
 
-    console.log("🚀 AVVIO LOOKUP - Ticket:", numToUse, "Tenant:", tenantId);
+  console.log("🚀 AVVIO LOOKUP - Ticket:", numToUse, "Tenant:", tenantId);
 
-    if (!numToUse || !tenantId) {
-      console.warn("⚠️ Dati mancanti per il lookup");
+  if (!numToUse || !tenantId) {
+    console.warn("⚠️ Dati mancanti per il lookup");
+    setStatus("error");
+    return;
+  }
+
+  setStatus("loading");
+  setIsExiting(true);
+  setWashServicesLoaded(false);
+
+  try {
+    const openSession = await fetchOpenSessionByTicket(tenantId, Number(numToUse));
+
+    if (!openSession) {
+      console.warn("❌ Sessione non trovata");
       setStatus("error");
+      setIsExiting(false);
+      setWashServicesLoaded(true);
       return;
     }
 
-    setStatus("loading");
-    setIsExiting(true);
-    setWashServicesLoaded(false);
+    console.log("📦 SESSIONE COMPLETA:", openSession);
+    setSession(openSession);
 
-    try {
-      const openSession = await fetchOpenSessionByTicket(tenantId, Number(numToUse));
+    const vehicle = openSession.parking_session_vehicles?.[0];
+    let finalCategoryId = null;
+    let loadedServices: WashServicePriceUI[] = [];
 
-      if (!openSession) {
-        console.warn("❌ Sessione non trovata");
-        setStatus("error");
-        setIsExiting(false);
-        setWashServicesLoaded(true);
-        return;
-      }
+    if (vehicle && vehicle.plate) {
+      setVehicleData({
+        plate: vehicle.plate,
+        brand: { name: vehicle.brand_name },
+        model: { name: vehicle.model_name },
+        category: { name: vehicle.category_name },
+        color: vehicle.color ? { name: vehicle.color } : null
+      });
 
-      console.log("📦 SESSIONE COMPLETA:", openSession);
-      setSession(openSession);
-
-      const vehicle = openSession.parking_session_vehicles?.[0];
-      let finalCategoryId = null;
-      let loadedServices: WashServicePriceUI[] = [];
-
-      if (vehicle && vehicle.plate) {
-        setVehicleData({
-          plate: vehicle.plate,
-          brand: { name: vehicle.brand_name },
-          model: { name: vehicle.model_name },
-          category: { name: vehicle.category_name },
-          color: vehicle.color ? { name: vehicle.color } : null
-        });
-
-        const lookup = await lookupCustomerByPlate(vehicle.plate);
-        setLookupResult(lookup);
-
-        if (lookup.vehicle?.category) {
-          finalCategoryId = lookup.vehicle.category.id;
-          setCategoryId(finalCategoryId);
-          setCategoriaNome(lookup.vehicle.category.name);
-          await loadTariffaOraria(finalCategoryId);
-          // 🔥 CARICA E SALVA IN VARIABILE LOCALE
-          loadedServices = await getAvailableWashServices(tenantId, finalCategoryId);
-          setAvailableWashServices(loadedServices);
-          setWashServicesLoaded(true);
-          console.log("✅ Servizi lavaggio caricati:", loadedServices.length);
-        }
-      }
-
-      if (!finalCategoryId && vehicle?.category_name) {
-        const { data: catData } = await supabase
-          .from('vehicle_categories')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .eq('name', vehicle.category_name)
-          .maybeSingle();
-
-        if (catData?.id) {
-          finalCategoryId = catData.id;
-          setCategoryId(finalCategoryId);
-          setCategoriaNome(vehicle.category_name);
-          await loadTariffaOraria(finalCategoryId);
-          // 🔥 CARICA E SALVA IN VARIABILE LOCALE
-          loadedServices = await getAvailableWashServices(tenantId, finalCategoryId);
-          setAvailableWashServices(loadedServices);
-          setWashServicesLoaded(true);
-          console.log("✅ Servizi lavaggio caricati (fallback):", loadedServices.length);
-        }
-      }
-
-      // 🔥 ORA USA loadedServices (variabile locale) per calcolare sessionWashTotal
-      let sessionWashServices = [];
-      let sessionWashTotal = 0;
+      const lookup = await lookupCustomerByPlate(vehicle.plate);
       
-      if (openSession.parking_session_wash_services && openSession.parking_session_wash_services.length > 0) {
-        sessionWashServices = openSession.parking_session_wash_services.map((ws: any) => ({
-          washServiceId: ws.wash_service_id,
-          quantity: ws.quantity || 1,
-          _price: ws.wash_service_price || 0,
-          _name: ws.wash_service_name
-        }));
+      // 🔥🔥🔥 AGGIUNGI I DATI DELLA FEDELTÀ AL LOOKUP RESULT 🔥🔥🔥
+      if (lookup.customer?.id) {
+        console.log(`🔍 Caricamento dati fedeltà per cliente: ${lookup.customer.id}`);
         
-        // 🔥 USA loadedServices INVECE DI availableWashServices
-        for (const ws of sessionWashServices) {
-          const service = loadedServices.find(s => s.washServiceId === ws.washServiceId);
-          if (service) {
-            sessionWashTotal += service.price;
-            console.log(`💰 Trovato prezzo per ${service.serviceName}: €${service.price}`);
-          } else if (ws._price) {
-            sessionWashTotal += ws._price;
-            console.log(`💰 Usato prezzo dalla sessione: €${ws._price}`);
-          }
+        const { data: fidelityData, error: fidelityError } = await supabase
+          .from('customer_fidelity')
+          .select('current_count, reward_available, fidelity_program_id')
+          .eq('customer_id', lookup.customer.id)
+          .eq('is_active', true)
+          .maybeSingle();
+        
+        if (fidelityError) {
+          console.error('❌ Errore caricamento fedeltà:', fidelityError);
+        } else if (fidelityData) {
+          console.log(`✅ Dati fedeltà caricati: reward_available=${fidelityData.reward_available}, current_count=${fidelityData.current_count}`);
+          lookup.fidelity = fidelityData;
         }
       }
       
-      console.log("🧼 sessionWashServices:", sessionWashServices);
-      console.log("💰 sessionWashTotal calcolato:", sessionWashTotal);
-      
-      setWashServices(sessionWashServices);
-      setWashTotal(sessionWashTotal);
-      setOreSosta(calculateOreSosta(openSession.entry_time));
-      setStatus("ready");
+      setLookupResult(lookup);
 
-      if (openSession.customer_id) {
-        await loadFidelityData(openSession.customer_id);
-        await loadOutstandingDebts(openSession.customer_id);
+      if (lookup.vehicle?.category) {
+        finalCategoryId = lookup.vehicle.category.id;
+        setCategoryId(finalCategoryId);
+        setCategoriaNome(lookup.vehicle.category.name);
+        await loadTariffaOraria(finalCategoryId);
+        // 🔥 CARICA E SALVA IN VARIABILE LOCALE
+        loadedServices = await getAvailableWashServices(tenantId, finalCategoryId);
+        setAvailableWashServices(loadedServices);
+        setWashServicesLoaded(true);
+        console.log("✅ Servizi lavaggio caricati:", loadedServices.length);
       }
-
-    } catch (err) {
-      console.error("🔥 ERRORE handleLookup:", err);
-      setStatus("error");
-      setWashServicesLoaded(true);
-    } finally {
-      setIsExiting(false);
     }
-  };
 
-  /* =========================================
+    if (!finalCategoryId && vehicle?.category_name) {
+      const { data: catData } = await supabase
+        .from('vehicle_categories')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('name', vehicle.category_name)
+        .maybeSingle();
+
+      if (catData?.id) {
+        finalCategoryId = catData.id;
+        setCategoryId(finalCategoryId);
+        setCategoriaNome(vehicle.category_name);
+        await loadTariffaOraria(finalCategoryId);
+        // 🔥 CARICA E SALVA IN VARIABILE LOCALE
+        loadedServices = await getAvailableWashServices(tenantId, finalCategoryId);
+        setAvailableWashServices(loadedServices);
+        setWashServicesLoaded(true);
+        console.log("✅ Servizi lavaggio caricati (fallback):", loadedServices.length);
+      }
+    }
+
+    // 🔥 ORA USA loadedServices (variabile locale) per calcolare sessionWashTotal
+    let sessionWashServices = [];
+    let sessionWashTotal = 0;
+    
+    if (openSession.parking_session_wash_services && openSession.parking_session_wash_services.length > 0) {
+      sessionWashServices = openSession.parking_session_wash_services.map((ws: any) => ({
+        washServiceId: ws.wash_service_id,
+        quantity: ws.quantity || 1,
+        _price: ws.wash_service_price || 0,
+        _name: ws.wash_service_name,
+        id: ws.id  // 🔥 SALVA ANCHE L'ID PER L'UPDATE
+      }));
+      
+      // 🔥 USA loadedServices INVECE DI availableWashServices
+      for (const ws of sessionWashServices) {
+        const service = loadedServices.find(s => s.washServiceId === ws.washServiceId);
+        if (service) {
+          sessionWashTotal += service.price;
+          console.log(`💰 Trovato prezzo per ${service.serviceName}: €${service.price}`);
+        } else if (ws._price) {
+          sessionWashTotal += ws._price;
+          console.log(`💰 Usato prezzo dalla sessione: €${ws._price}`);
+        }
+      }
+    }
+    
+    console.log("🧼 sessionWashServices:", sessionWashServices);
+    console.log("💰 sessionWashTotal calcolato:", sessionWashTotal);
+    
+    setWashServices(sessionWashServices);
+    setWashTotal(sessionWashTotal);
+    setOreSosta(calculateOreSosta(openSession.entry_time));
+    setStatus("ready");
+
+    if (openSession.customer_id) {
+      await loadFidelityData(openSession.customer_id);
+      await loadOutstandingDebts(openSession.customer_id);
+    }
+
+  } catch (err) {
+    console.error("🔥 ERRORE handleLookup:", err);
+    setStatus("error");
+    setWashServicesLoaded(true);
+  } finally {
+    setIsExiting(false);
+  }
+};
+
+ /* =========================================
       PAGAMENTO + CHIUSURA SESSIONE (CON STAMPA)
       ========================================= */
-  const handlePayment = async () => {
-    if (!session || !tenantId || isProcessing) return;
+const handlePayment = async () => {
+  if (!session || !tenantId || isProcessing) return;
 
-    setIsProcessing(true);
+  setIsProcessing(true);
 
-    try {
-      const shift = await getCurrentShift();
-      if (!shift) {
-        alert('Nessuno shift attivo trovato. Apri un turno prima di incassare.');
-        setIsProcessing(false);
-        return;
+  // Reset flag premio all'inizio
+  let premioUsatoInQuestaSessione = false;
+  let premioScontoValore = 0;
+
+  try {
+    const shift = await getCurrentShift();
+    if (!shift) {
+      alert('Nessuno shift attivo trovato. Apri un turno prima di incassare.');
+      setIsProcessing(false);
+      return;
+    }
+
+    const { data: methodData, error: methodError } = await supabase
+      .from('payment_methods')
+      .select('id')
+      .eq('code', paymentMethod)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (methodError) throw methodError;
+
+    // 1. AGGIORNA I LAVAGGI A COMPLETED
+    console.log(`🔍 Aggiornamento lavaggi per sessione: ${session.id}`);
+    
+    const { error: washUpdateError } = await supabase
+      .from('parking_session_wash_services')
+      .update({ 
+        status: 'completed',
+        completed_at: new Date().toISOString()
+      })
+      .eq('parking_session_id', session.id);
+
+    if (washUpdateError) {
+      console.error('❌ Errore update lavaggi:', washUpdateError);
+    } else {
+      console.log(`✅ Lavaggi aggiornati a 'completed'`);
+    }
+
+    // 🔥🔥🔥 VERIFICA SE IL PREMIO È STATO APPLICATO NEL CALCOLO 🔥🔥🔥
+    // (premioSconto viene dalla calculateFinalTotal)
+    if (premioSconto > 0) {
+      premioUsatoInQuestaSessione = true;
+      premioScontoValore = premioSconto;
+      console.log(`🎁 Premio fedeltà rilevato: sconto di €${premioScontoValore}`);
+    }
+
+    // 🔥🔥🔥 SE È UN LAVAGGIO GRATUITO, AGGIORNA IL PREZZO NEL DATABASE 🔥🔥🔥
+    if (premioSconto > 0) {
+      const { error: updatePriceError } = await supabase
+        .from('parking_session_wash_services')
+        .update({ wash_service_price: 0 })
+        .eq('parking_session_id', session.id);
+      
+      if (updatePriceError) {
+        console.error('❌ Errore aggiornamento prezzo lavaggio gratuito:', updatePriceError);
+      } else {
+        console.log('✅ Prezzo del lavaggio gratuito aggiornato a 0 nel database');
       }
+    }
 
-      const { data: methodData, error: methodError } = await supabase
-        .from('payment_methods')
-        .select('id')
-        .eq('code', paymentMethod)
-        .eq('tenant_id', tenantId)
-        .single();
+    // 🔥🔥🔥 2. AGGIORNA IL CONTATORE FEDELTÀ (SOLO SE NON È UN LAVAGGIO GRATUITO) 🔥🔥🔥
+    if (lookupResult?.customer?.id && !premioUsatoInQuestaSessione) {
+      console.log(`🎯 Aggiornamento fedeltà per cliente: ${lookupResult.customer.id} (lavaggio pagato)`);
+      
+      const { error: fidelityError } = await supabase.rpc('increment_fidelity_counter', {
+        p_customer_id: lookupResult.customer.id
+      });
+      
+      if (fidelityError) {
+        console.error('❌ Errore aggiornamento fedeltà:', fidelityError);
+      } else {
+        console.log('✅ Contatore fedeltà incrementato (+1)');
+      }
+    } else if (premioUsatoInQuestaSessione) {
+      console.log('🎁 Lavaggio gratuito - contatore fedeltà NON incrementato');
+    } else {
+      console.log('⚠️ Nessun cliente associato, salto aggiornamento fedeltà');
+    }
 
-      if (methodError) throw methodError;
+    // 🔥🔥🔥 2b. RESETTA IL PREMIO FEDELTÀ SE È STATO USATO 🔥🔥🔥
+    if (premioUsatoInQuestaSessione && lookupResult?.customer?.id) {
+      console.log(`🎁 Reset del premio per cliente: ${lookupResult.customer.id}`);
+      
+      const { error: resetError } = await supabase
+        .from('customer_fidelity')
+        .update({ reward_available: false })
+        .eq('customer_id', lookupResult.customer.id);
+      
+      if (resetError) {
+        console.error('❌ Errore reset premio:', resetError);
+      } else {
+        console.log('✅ Premio fedeltà consumato, reward_available = false');
+      }
+    }
 
-      await supabase.from('payments').insert({
+    // 📧📧📧 3. ACCODA EMAIL DI NOTIFICA LAVAGGIO 📧📧📧
+    const { data: freshWashServices, error: fetchError } = await supabase
+      .from('parking_session_wash_services')
+      .select('*')
+      .eq('parking_session_id', session.id);
+
+    if (fetchError) {
+      console.error('❌ Errore recupero wash services freschi:', fetchError);
+    } else if (freshWashServices && freshWashServices.length > 0) {
+      console.log(`📧 Preparazione accodamento email per ${freshWashServices.length} lavaggio/i`);
+      
+      for (const wash of freshWashServices) {
+        if (wash.status === 'completed' && wash.completed_at) {
+          console.log(`📧 Accodamento email per lavaggio: ${wash.wash_service_name}`, {
+            id: wash.id,
+            wash_service_id: wash.wash_service_id,
+            completed_at: wash.completed_at
+          });
+          
+          // 🔥 Usa prezzo 0 per email se è un lavaggio gratuito
+          const emailPrice = premioUsatoInQuestaSessione ? 0 : wash.wash_service_price;
+          
+          const { data: emailData, error: emailError } = await supabase.rpc('queue_wash_completion_email', {
+  p_tenant_id: tenantId,
+  p_customer_id: lookupResult.customer.id,
+  p_parking_session_id: session.id,
+  p_wash_service_id: wash.wash_service_id,
+  p_wash_service_name: wash.wash_service_name,
+  p_wash_service_price: wash.wash_service_price,  // 🔥 SEMPRE IL PREZZO ORIGINALE
+  p_completed_at: wash.completed_at
+});
+          
+          if (emailError) {
+            console.error('❌ Errore accodamento email:', emailError);
+          } else {
+            console.log(`✅ Email accodata con ID: ${emailData} per ${wash.wash_service_name}`);
+          }
+        } else {
+          console.log(`⚠️ Lavaggio ${wash.wash_service_name} skip: status=${wash.status}, completed_at=${wash.completed_at}`);
+        }
+      }
+    } else {
+      console.log('⚠️ Nessun wash service trovato per questa sessione');
+    }
+
+    // 4. REGISTRA IL PAGAMENTO
+    const { error: paymentError } = await supabase
+      .from('payments')
+      .insert({
         tenant_id: tenantId,
         shift_id: shift.id,
         amount: calculatedPrice,
@@ -1254,38 +1459,44 @@ export default function Exit() {
         created_at: new Date().toISOString()
       });
 
-      if (outstandingDebts.length > 0) {
-        for (const debt of outstandingDebts) {
-          await supabase.from('outstanding_payments').update({
-            status: 'paid',
-            closed_at: new Date().toISOString()
-          }).eq('id', debt.id);
-        }
-        setOutstandingDebts([]);
-        setTotalePendenti(0);
-      }
-
-      await closeParkingSession({
-        sessionId: session.id,
-        finalAmount: calculatedPrice,
-      });
-
-      // 🔥 STAMPA IL TICKET DI USCITA
-      if (stampaAbilitata) {
-        await handlePrintTicket('uscita');
-      }
-
-      setStatus("paid");
-      setTimeout(() => navigate("/dashboard"), 2000);
-
-    } catch (err) {
-      console.error('❌ Errore pagamento:', err);
-      setStatus("error");
-      alert('Errore durante il pagamento: ' + (err as Error).message);
-    } finally {
-      setIsProcessing(false);
+    if (paymentError) {
+      console.error('❌ Errore inserimento pagamento:', paymentError);
     }
-  };
+
+    // 5. CHIUDI EVENTUALI DEBITI PENDENTI
+    if (outstandingDebts.length > 0) {
+      for (const debt of outstandingDebts) {
+        await supabase.from('outstanding_payments').update({
+          status: 'paid',
+          closed_at: new Date().toISOString()
+        }).eq('id', debt.id);
+      }
+      setOutstandingDebts([]);
+      setTotalePendenti(0);
+    }
+
+    // 6. CHIUDI LA SESSIONE DI PARCHEGGIO
+    await closeParkingSession({
+      sessionId: session.id,
+      finalAmount: calculatedPrice,
+    });
+
+    // 7. STAMPA IL TICKET DI USCITA
+    if (stampaAbilitata) {
+      await handlePrintTicket('uscita');
+    }
+
+    setStatus("paid");
+    setTimeout(() => navigate("/dashboard"), 2000);
+
+  } catch (err) {
+    console.error('❌ Errore pagamento:', err);
+    setStatus("error");
+    alert('Errore durante il pagamento: ' + (err as Error).message);
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   /* =========================================
       PAGAMENTO DIFFERITO (CON STAMPA E LOG E GESTIONE CLIENTE NON IDENTIFICATO)

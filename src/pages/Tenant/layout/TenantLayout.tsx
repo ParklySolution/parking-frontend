@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/services/supabase";
 import TenantSidebar from "./TenantSidebar";
 import TenantHeader from "./TenantHeader";
+import { startEmailProcessor } from "@/services/fidelityEmailService";
 
 export default function TenantLayout() {
   const { tenantId: urlTenantId } = useParams();
   const [realTenantId, setRealTenantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processorStarted, setProcessorStarted] = useState(false);
 
   useEffect(() => {
     async function resolveTenantId() {
@@ -84,6 +86,15 @@ export default function TenantLayout() {
 
     resolveTenantId();
   }, [urlTenantId]);
+
+  // 🔥 AVVIA IL PROCESSORE EMAIL QUANDO IL TENANT È CARICATO
+  useEffect(() => {
+    if (realTenantId && !processorStarted) {
+      console.log("🚀 [TenantLayout] Avvio processore email per tenant:", realTenantId);
+      startEmailProcessor(60); // Controlla ogni 60 secondi
+      setProcessorStarted(true);
+    }
+  }, [realTenantId, processorStarted]);
 
   if (loading) {
     return (

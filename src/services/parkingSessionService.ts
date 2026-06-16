@@ -413,10 +413,10 @@ export async function closeParkingSession({
   washServicesPaid?: boolean;
 }) {
   const updates = {
-    exit_time: new Date().toISOString(),
-    final_amount: finalAmount,
-    status: "closed",
-  };
+  exit_time: new Date().toISOString(),
+  final_amount: finalAmount,
+  status: "closed"
+};
 
   if (washServicesPaid) {
     await supabase

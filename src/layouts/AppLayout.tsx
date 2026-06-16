@@ -3,12 +3,16 @@ import { Outlet, NavLink, useLocation } from "react-router-dom";
 export default function AppLayout() {
   const location = useLocation();
   
-  // Nascondi sidebar in dashboard, ingresso e exit
+  // 🔥 AGGIUNGI le nuove pagine dove nascondere la sidebar
   const hideSidebar = [
     "/", 
     "/dashboard", 
     "/ingresso", 
-    "/exit"
+    "/exit",
+    "/outstanding-payments",     // ← AGGIUNTO
+    "/fidelity-customers",        // ← AGGIUNTO
+    "/shifts",        // ← AGGIUNTO
+    "/customers"        // ← AGGIUNTO
   ].includes(location.pathname);
 
   // ⭐ Controllo impersonation
@@ -42,8 +46,6 @@ export default function AppLayout() {
       {/* Sidebar - visibile solo se NON siamo in hideSidebar */}
       {!hideSidebar && (
         <aside className="w-64 bg-white shadow-lg">
-          {/* <div className="p-4 font-bold text-xl border-b">Parking Labs</div> */}
-
           <nav className="p-4 space-y-2">
             <NavLink
               to="/ingresso"

@@ -4,6 +4,14 @@ import { useNavigate } from "react-router-dom";
 import { FaUsers, FaTicketAlt, FaCar, FaChartLine, FaEuroSign } from "react-icons/fa";
 
 /* ======================================================
+   🔥 COLORI
+   ====================================================== */
+const BLUE = "#4f8cff";
+const BG_DARK = "#1a1f25";
+const BG_LIGHTER = "#2d2d3a";
+const BG_MAIN = "#0d1117";
+
+/* ======================================================
    INTERFACCE
    ====================================================== */
 interface DashboardStats {
@@ -104,7 +112,7 @@ export default function TenantDashboard() {
   }, [tenantId]);
 
   /* ======================================================
-     3️⃣ RENDERING (Puro, senza TenantLayout interno)
+     3️⃣ RENDERING
      ====================================================== */
 
   if (loading) {
@@ -117,7 +125,7 @@ export default function TenantDashboard() {
   }
 
   return (
-    <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
+    <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto", background: BG_DARK, minHeight: "100vh" }}>
       
       {/* Header Interno della Pagina */}
       <div style={styles.headerStyle}>

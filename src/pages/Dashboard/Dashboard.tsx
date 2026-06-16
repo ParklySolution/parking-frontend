@@ -24,7 +24,8 @@ import {
   FaHistory,
   FaClock,
   FaPlusCircle,
-  FaSyncAlt  // Nuova icona per rinnovo
+  FaSyncAlt,
+  FaGift
 } from "react-icons/fa";
 
 import "@/styles/dashboard.css";
@@ -179,7 +180,7 @@ export default function Dashboard() {
   };
 
   /* ===============================
-     ⭐ NUOVO: GESTIONE CLICK RINNOVO ABBONAMENTO
+     GESTIONE CLICK RINNOVO ABBONAMENTO
      =============================== */
   const handleSubscriptionRenewalClick = () => {
     if (!tenantId) {
@@ -261,49 +262,42 @@ export default function Dashboard() {
           {/* ================= KPI ================= */}
           <KpiBar logs={logs} />
 
-          {/* ================= GRID ================= */}
+                                        {/* ================= GRID ================= */}
           <main className="dashboard-grid">
-            {/* TARGHE LIVE */}
-            <section className="grid-cell targhe-live">
+            {/* TARGHE LIVE - LEGGERMENTE RIDOTTO */}
+            <section className="grid-cell targhe-live" style={{ height: "420px" }}>
               <div style={{ 
                 display: "flex", 
                 justifyContent: "space-between", 
                 alignItems: "center", 
-                marginBottom: "15px" 
+                marginBottom: "12px" 
               }}>
                 <h3 style={{ margin: 0, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
                   <FaCar color="#4f8cff" /> Targhe rilevate
                 </h3>
                 
-                {/* Icona fotocamera per nuovo ingresso manuale */}
                 <button
                   onClick={() => handleGoToIngresso()}
                   style={{
-                    width: "40px",
-                    height: "40px",
+                    width: "36px",
+                    height: "36px",
                     background: "#4f8cff",
                     color: "white",
                     border: "none",
                     borderRadius: "50%",
                     cursor: "pointer",
-                    fontSize: "18px",
-                    fontWeight: 600,
-                    transition: "all 0.2s ease",
+                    fontSize: "16px",
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                    boxShadow: "0 4px 12px rgba(79, 140, 255, 0.3)"
+                    justifyContent: "center"
                   }}
-                  title="Nuovo ingresso manuale"
-                  onMouseEnter={(e) => e.currentTarget.style.background = "#2563eb"}
-                  onMouseLeave={(e) => e.currentTarget.style.background = "#4f8cff"}
                 >
                   <FaCamera />
                 </button>
               </div>
 
-              {/* Lista targhe */}
-              <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+              {/* Ridotto leggermente l'altezza massima */}
+              <div style={{ maxHeight: "260px", overflowY: "auto" }}>
                 {logs.length > 0 ? (
                   logs.slice(0, 6).map((log, index) => (
                     <div
@@ -311,120 +305,79 @@ export default function Dashboard() {
                       onClick={() => setSelectedPlate(log.plate)}
                       style={{
                         cursor: "pointer",
-                        padding: "12px 16px",
+                        padding: "10px 14px",
                         margin: "4px 0",
                         borderRadius: "8px",
                         background: selectedPlate === log.plate ? "#4f8cff" : "#1a1f25",
                         color: selectedPlate === log.plate ? "#fff" : "#e6e6e6",
                         display: "flex",
                         justifyContent: "space-between",
-                        alignItems: "center",
-                        transition: "all 0.2s ease",
-                        border: "1px solid rgba(255,255,255,0.05)",
-                        boxShadow: selectedPlate === log.plate ? "0 4px 12px rgba(79, 140, 255, 0.3)" : "none"
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedPlate !== log.plate) {
-                          e.currentTarget.style.background = "#2d3748";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedPlate !== log.plate) {
-                          e.currentTarget.style.background = "#1a1f25";
-                        }
+                        alignItems: "center"
                       }}
                     >
                       <span style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
-                        <FaCar size={12} style={{ opacity: 0.7 }} />
-                        {log.plate}
+                        <FaCar size={12} /> {log.plate}
                       </span>
-                      <span style={{ opacity: 0.7, fontSize: "12px" }}>
-                        {new Date(log.timestamp).toLocaleTimeString("it-IT", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                      <span style={{ opacity: 0.7, fontSize: "11px" }}>
+                        {new Date(log.timestamp).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
                   ))
                 ) : (
-                  // Targhe di esempio selezionabili
                   samplePlates.map((item, index) => (
                     <div
                       key={index}
                       onClick={() => setSelectedPlate(item.plate)}
                       style={{
                         cursor: "pointer",
-                        padding: "12px 16px",
+                        padding: "10px 14px",
                         margin: "4px 0",
                         borderRadius: "8px",
                         background: selectedPlate === item.plate ? "#4f8cff" : "#1a1f25",
                         color: selectedPlate === item.plate ? "#fff" : "#e6e6e6",
                         display: "flex",
                         justifyContent: "space-between",
-                        alignItems: "center",
-                        transition: "all 0.2s ease",
-                        border: "1px solid rgba(255,255,255,0.05)",
-                        boxShadow: selectedPlate === item.plate ? "0 4px 12px rgba(79, 140, 255, 0.3)" : "none"
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedPlate !== item.plate) {
-                          e.currentTarget.style.background = "#2d3748";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedPlate !== item.plate) {
-                          e.currentTarget.style.background = "#1a1f25";
-                        }
+                        alignItems: "center"
                       }}
                     >
                       <span style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
-                        <FaCar size={12} style={{ opacity: 0.7 }} />
-                        {item.plate}
+                        <FaCar size={12} /> {item.plate}
                       </span>
-                      <span style={{ opacity: 0.7, fontSize: "12px" }}>{item.time}</span>
+                      <span style={{ opacity: 0.7, fontSize: "11px" }}>{item.time}</span>
                     </div>
                   ))
                 )}
               </div>
             </section>
 
-            {/* FOTO */}
-            <section className="grid-cell foto-targa">
-              <div className="photo-box">
-                <div className="photo-placeholder">
+            {/* FOTO - LEGGERMENTE RIDOTTO */}
+            <section className="grid-cell foto-targa" style={{ height: "420px" }}>
+              <div className="photo-box" style={{ padding: "16px" }}>
+                <div className="photo-placeholder" style={{ minHeight: "220px", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {selectedPlate ? (
-                    <div style={{ textAlign: "center", padding: "20px" }}>
-                      <FaCamera style={{ fontSize: "64px", marginBottom: "10px", color: "#4f8cff" }} />
-                      <div style={{ fontSize: "28px", fontWeight: "bold", color: "#4f8cff" }}>
+                    <div style={{ textAlign: "center", padding: "16px" }}>
+                      <FaCamera style={{ fontSize: "56px", marginBottom: "12px", color: "#4f8cff" }} />
+                      <div style={{ fontSize: "24px", fontWeight: "bold", color: "#4f8cff" }}>
                         {selectedPlate}
-                      </div>
-                      <div style={{ marginTop: "10px", color: "#9ca3af" }}>
-                        Targa selezionata
                       </div>
                       <button
                         onClick={() => handleGoToIngresso(selectedPlate)}
                         style={{
-                          marginTop: "15px",
+                          marginTop: "12px",
                           padding: "8px 16px",
                           background: "#4f8cff",
                           color: "#fff",
                           border: "none",
                           borderRadius: "6px",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "8px"
+                          cursor: "pointer"
                         }}
                       >
-                        <FaSignInAlt /> Entra con questa targa
+                        <FaSignInAlt /> Entra
                       </button>
                     </div>
                   ) : (
-                    <div style={{ textAlign: "center", padding: "20px" }}>
-                      <FaCamera style={{ fontSize: "48px", marginBottom: "10px", color: "#666" }} />
-                      <div style={{ color: "#9ca3af", marginBottom: "15px" }}>
-                        Seleziona una targa o clicca sulla fotocamera
-                      </div>
+                    <div style={{ textAlign: "center", padding: "16px" }}>
+                      <FaCamera style={{ fontSize: "48px", marginBottom: "12px", color: "#666" }} />
                       <button
                         onClick={() => handleGoToIngresso()}
                         style={{
@@ -433,14 +386,10 @@ export default function Dashboard() {
                           color: "#fff",
                           border: "none",
                           borderRadius: "6px",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          fontSize: "16px"
+                          cursor: "pointer"
                         }}
                       >
-                        <FaPlusCircle /> Nuovo ingresso manuale
+                        <FaPlusCircle /> Nuovo ingresso
                       </button>
                     </div>
                   )}
@@ -448,32 +397,23 @@ export default function Dashboard() {
               </div>
             </section>
 
-            {/* TRANSITI */}
-            <section className="grid-cell transiti-live">
+            {/* TRANSITI - LEGGERMENTE RIDOTTO */}
+            <section className="grid-cell transiti-live" style={{ height: "420px" }}>
               <div className="live-box">
                 <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <FaHistory color="#4f8cff" /> Transiti in tempo reale
                 </h3>
-
                 <div className="gate-status-container">
-                  <AccessGate
-                    status={gateStatus}
-                    onReset={() => setGateStatus("idle")}
-                  />
+                  <AccessGate status={gateStatus} onReset={() => setGateStatus("idle")} />
                 </div>
-
-                <div className="transits-list">
+                <div className="transits-list" style={{ maxHeight: "200px", overflowY: "auto" }}>
                   <div className="list-header">
                     <span>ORA</span>
                     <span>TARGA</span>
                     <span>STATO</span>
                   </div>
-
                   {logs.slice(0, 5).map((log, index) => (
-                    <div
-                      key={index}
-                      className={`transit-item ${log.allowed ? "allowed" : "blocked"}`}
-                    >
+                    <div key={index} className={`transit-item ${log.allowed ? "allowed" : "blocked"}`}>
                       <span className="transit-time">
                         {new Date(log.timestamp).toLocaleTimeString("it-IT")}
                       </span>
@@ -483,209 +423,59 @@ export default function Dashboard() {
                       </span>
                     </div>
                   ))}
-
-                  {logs.length === 0 && (
-                    samplePlates.slice(0, 3).map((item, index) => (
-                      <div key={index} className="transit-item allowed">
-                        <span className="transit-time">{item.time}</span>
-                        <span className="transit-plate">{item.plate}</span>
-                        <span className="transit-status allowed">✓</span>
-                      </div>
-                    ))
-                  )}
-
-                  {loading && (
-                    <div className="loading-transits">
-                      Caricamento transiti...
-                    </div>
-                  )}
                 </div>
               </div>
             </section>
 
             <section className="grid-cell spazio-vuoto" />
-            
-            {/* MENU CON PULSANTI - VERSIONE COMPATTA */}
-<section className="grid-cell menu">
-  <div className="menu-box" style={{ 
-    display: "flex", 
-    flexDirection: "column", 
-    gap: "6px",
-    padding: "12px"
-  }}>
-    <button 
-      onClick={() => navigate("/subscriptions")}
-      style={{
-        padding: "8px 10px",
-        fontSize: "13px",
-        background: "#2d3748",
-        border: "none",
-        borderRadius: "6px",
-        color: "#fff",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        transition: "all 0.2s"
-      }}
-      onMouseEnter={(e) => e.currentTarget.style.background = "#4a5568"}
-      onMouseLeave={(e) => e.currentTarget.style.background = "#2d3748"}
-    >
-      <FaTicketAlt size={14} /> Abbonamenti
-    </button>
-    
-    {/* PULSANTE RINNOVO ABBONAMENTO */}
-    <button 
-      onClick={handleSubscriptionRenewalClick}
-      disabled={!tenantId}
-      style={{ 
-        padding: "8px 10px",
-        fontSize: "13px",
-        opacity: tenantId ? 1 : 0.5,
-        background: "#10b981",
-        color: "#fff",
-        border: "none",
-        borderRadius: "6px",
-        cursor: tenantId ? "pointer" : "not-allowed",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        transition: "all 0.2s"
-      }}
-      onMouseEnter={(e) => {
-        if (tenantId) e.currentTarget.style.background = "#059669";
-      }}
-      onMouseLeave={(e) => {
-        if (tenantId) e.currentTarget.style.background = "#10b981";
-      }}
-    >
-      <FaSyncAlt size={14} /> Rinnova
-    </button>
-    
-    {/* PULSANTE NUOVO CONTRATTO */}
-    <button 
-      onClick={handleContractsClick}
-      style={{
-        padding: "8px 10px",
-        fontSize: "13px",
-        background: "#2d3748",
-        border: "none",
-        borderRadius: "6px",
-        color: "#fff",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        transition: "all 0.2s"
-      }}
-      onMouseEnter={(e) => e.currentTarget.style.background = "#4a5568"}
-      onMouseLeave={(e) => e.currentTarget.style.background = "#2d3748"}
-    >
-      <FaFileContract size={14} /> Nuovo Contratto
-    </button>
 
-    {/* PULSANTE GESTIONE CONTRATTI */}
-    <button 
-      onClick={handleContractsManagementClick}
-      disabled={!tenantId}
-      style={{ 
-        padding: "8px 10px",
-        fontSize: "13px",
-        opacity: tenantId ? 1 : 0.5,
-        background: "#2d3748",
-        border: "none",
-        borderRadius: "6px",
-        color: "#fff",
-        cursor: tenantId ? "pointer" : "not-allowed",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        transition: "all 0.2s"
-      }}
-      onMouseEnter={(e) => {
-        if (tenantId) e.currentTarget.style.background = "#4a5568";
-      }}
-      onMouseLeave={(e) => {
-        if (tenantId) e.currentTarget.style.background = "#2d3748";
-      }}
-    >
-      <FaFileContract size={14} /> Gestione Contratti
-    </button>
-    
-    {/* PULSANTE SOSTE */}
-    <button 
-      onClick={() => navigate("/sessions")}
-      style={{ 
-        padding: "8px 10px",
-        fontSize: "13px",
-        background: "#f59e0b",
-        color: "#fff",
-        border: "none",
-        borderRadius: "6px",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        transition: "all 0.2s"
-      }}
-      onMouseEnter={(e) => e.currentTarget.style.background = "#d97706"}
-      onMouseLeave={(e) => e.currentTarget.style.background = "#f59e0b"}
-    >
-      <FaClock size={14} /> Soste
-    </button>
-    
-    {/* PULSANTE TURNI */}
-    <button 
-      onClick={() => navigate("/shifts")}
-      style={{ 
-        padding: "8px 10px",
-        fontSize: "13px",
-        background: "#4f8cff",
-        color: "#fff",
-        border: "none",
-        borderRadius: "6px",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        transition: "all 0.2s"
-      }}
-      onMouseEnter={(e) => e.currentTarget.style.background = "#3a6ecf"}
-      onMouseLeave={(e) => e.currentTarget.style.background = "#4f8cff"}
-    >
-      <FaClock size={14} /> Turni
-    </button>
-    
-    {/* PULSANTE IMPOSTAZIONI */}
-    <button 
-      onClick={() => alert("Impostazioni - in sviluppo")}
-      style={{
-        padding: "8px 10px",
-        fontSize: "13px",
-        background: "#2d3748",
-        border: "none",
-        borderRadius: "6px",
-        color: "#fff",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        transition: "all 0.2s",
-        opacity: 0.7
-      }}
-      onMouseEnter={(e) => e.currentTarget.style.background = "#4a5568"}
-      onMouseLeave={(e) => e.currentTarget.style.background = "#2d3748"}
-    >
-      <FaCog size={14} /> Impostazioni
-    </button>
-  </div>
-</section>
-
-            <section className="grid-cell storico">
-              <div className="history-box">
-                <PlatesLogTable logs={logs} loading={loading} />
+            {/* MENU - AUMENTATO */}
+            <section className="grid-cell menu">
+              <div className="menu-box" style={{ 
+                display: "grid", 
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: "10px",
+                padding: "20px 16px",
+                minHeight: "10px"
+              }}>
+                {/* Abbonamenti */}
+                <button onClick={() => navigate("/subscriptions")} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <FaTicketAlt size={24} /><span>Abbonamenti</span>
+                </button>
+                <button onClick={handleSubscriptionRenewalClick} disabled={!tenantId} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", opacity: tenantId ? 1 : 0.5, background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: tenantId ? "pointer" : "not-allowed", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <FaSyncAlt size={24} /><span>Rinnova</span>
+                </button>
+                <button onClick={handleContractsClick} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <FaFileContract size={24} /><span>Nuovo Contratto</span>
+                </button>
+                <button onClick={handleContractsManagementClick} disabled={!tenantId} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", opacity: tenantId ? 1 : 0.5, background: "linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: tenantId ? "pointer" : "not-allowed", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <FaFileContract size={24} /><span>Gestione Contratti</span>
+                </button>
+                <button onClick={() => navigate("/sessions")} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <FaClock size={24} /><span>Soste</span>
+                </button>
+                <button onClick={() => navigate("/shifts")} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", background: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <FaClock size={24} /><span>Turni</span>
+                </button>
+                <button onClick={() => navigate("/outstanding-payments")} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <FaTicketAlt size={24} /><span>Insoluti</span>
+                </button>
+                <button onClick={() => navigate("/fidelity-customers")} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", background: "linear-gradient(135deg, #ec489a 0%, #be185d 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <FaGift size={24} /><span>Clienti Fedeltà</span>
+                </button>
+                <button onClick={() => alert("Impostazioni")} style={{ padding: "14px 6px", fontSize: "13px", fontWeight: "600", background: "linear-gradient(135deg, #64748b 0%, #475569 100%)", border: "none", borderRadius: "10px", color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", opacity: 0.7 }}>
+                  <FaCog size={24} /><span>Impostazioni</span>
+                </button>
+                <div></div><div></div><div></div>
               </div>
             </section>
+
+            {/* STORICO */}
+<section className="grid-cell storico">
+  <div className="history-box" style={{ padding: "16px", overflowY: "auto" }}>
+    <PlatesLogTable logs={logs} loading={loading} />
+  </div>
+</section>
           </main>
         </div>
       </div>

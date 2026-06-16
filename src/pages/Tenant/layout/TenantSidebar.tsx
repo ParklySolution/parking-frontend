@@ -16,7 +16,8 @@ import {
   FaFileSignature,
   FaBuilding,
   FaUserCog,
-  FaCreditCard
+  FaCreditCard,
+  FaEnvelope
 } from "react-icons/fa";
 import "./TenantSidebar.css";
 
@@ -169,6 +170,24 @@ export default function TenantSidebar() {
         >
           <FaGift className="icon" />
           Bonus Lavaggio
+        </NavLink>
+
+        {/* Programmi Fedeltà */}
+        <NavLink
+          to={`/tenant/${tenantId}/management/fidelity-programs`}
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <FaGift className="icon" />
+          Programmi Fedeltà
+        </NavLink>
+
+        {/* 🔥🔥🔥 TEMPLATE EMAIL (NUOVA VOCE) 🔥🔥🔥 */}
+        <NavLink
+          to={`/tenant/${tenantId}/management/email-templates`}
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <FaEnvelope className="icon" />
+          Template Email
         </NavLink>
 
         <NavLink

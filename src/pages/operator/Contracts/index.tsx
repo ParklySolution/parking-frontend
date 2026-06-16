@@ -331,7 +331,7 @@ console.log("🔍 FORM DATA per PDF:", {
     return html;
   };
 
-  // 🔥 GENERA CONTRATTO E SALVA NEL DB (VERSIONE COMPLETA CON VEICOLI)
+  // 🔥 GENERA CONTRATTO E SALVA NEL DB (VERSIONE COMPLETA CON VEICOLI E FEDELTÀ)
 const handleGenerateContract = async () => {
   if (!selectedTemplate || !companyInfo || !tenantId) return;
   
@@ -586,6 +586,51 @@ for (const vehicleProfileId of vehicleIds) {
         console.error("❌ Errore creazione subscription:", subscriptionError);
       } else {
         console.log("✅ Subscription creata con prezzo:", finalPrice);
+      }
+    }
+
+    // 5b. 🎁 CREA FEDELTÀ PER CONTRATTI WASH_FIDELITY
+    if (selectedType === 'wash_fidelity') {
+      console.log("🎁 Creazione programma fedeltà per cliente:", customer.id);
+      
+      try {
+        // Trova un programma fedeltà attivo
+        const { data: program, error: programError } = await supabase
+          .from('fidelity_programs')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+        
+        if (programError) {
+          console.error("❌ Errore ricerca programma fedeltà:", programError);
+        }
+        
+        if (!program) {
+          console.warn("⚠️ Nessun programma fedeltà attivo trovato. Crealo nel pannello Tenant → Programmi Fedeltà");
+        } else {
+          // Inserisci in customer_fidelity
+          const { error: fidelityError } = await supabase
+            .from("customer_fidelity")
+            .insert({
+              tenant_id: tenantId,
+              customer_id: customer.id,
+              fidelity_program_id: program.id,
+              current_count: 0,
+              reward_available: false,
+              is_active: true,
+              updated_at: new Date().toISOString()
+            });
+
+          if (fidelityError) {
+            console.error("❌ Errore creazione fedeltà:", fidelityError);
+          } else {
+            console.log("✅ Cliente iscritto al programma fedeltà con successo!");
+          }
+        }
+      } catch (err) {
+        console.error("❌ Eccezione creazione fedeltà:", err);
       }
     }
 

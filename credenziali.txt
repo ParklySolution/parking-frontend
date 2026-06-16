@@ -1510,3 +1510,36 @@ const vehiclesWithDetails = (vehicles || []).map((v) => {
                 ))}
               </div>
             )}
+
+
+
+🧼 {{wash_service}} completato su {{brand_model}}
+
+
+
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #4f8cff, #6b47b3); padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h2 style="color: white; margin: 0;">{{company_name}}</h2>
+        </div>
+        <div style="background: white; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
+          <h3>Ciao {{customer_name}}! 👋</h3>
+          <p>Il tuo <strong>{{wash_service}}</strong> su <strong>{{brand_model}} ({{plate}})</strong> è stato completato.</p>
+          <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 15px 0;">
+            <p>💰 Importo: €{{amount_paid}}</p>
+            <p>📅 Data: {{wash_date}}</p>
+          </div>
+          <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
+            <p><strong>🏆 {{program_name}}</strong></p>
+            <p>📊 Progresso: {{current_washes}} / {{required_threshold}}</p>
+            <p>🎯 Mancano {{remaining_washes}} lavaggi al premio!</p>
+            <div style="background: #c8e6c9; border-radius: 20px; overflow: hidden; margin-top: 10px;">
+              <div style="background: #4caf50; width: {{percentage}}%; text-align: center; color: white; padding: 5px;">
+                {{percentage}}%
+              </div>
+            </div>
+          </div>
+          <p style="color: #666; font-size: 12px; text-align: center; margin-top: 20px;">Grazie per la fiducia!</p>
+        </div>
+      </div>
+
+
